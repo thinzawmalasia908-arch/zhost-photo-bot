@@ -15,6 +15,10 @@ export interface Env {
   BOT_SESSIONS: KVNamespace;
 }
 
+// ⚠️ Fallback Values — Secret မရှိရင် ဒါတွေ သုံးမယ်
+const FALLBACK_CHANNEL_ID = "@ZhostTech";
+const FALLBACK_CHANNEL_USERNAME = "@ZhostTech";
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -29,6 +33,14 @@ export default {
     if (url.pathname === "/webhook") {
       const bot = new Bot(env.BOT_TOKEN);
 
+      // ⚠️ Channel ID ကို ရယူခြင်း (Secret မရှိရင် Fallback သုံး)
+      const channelId = env.CHANNEL_ID?.trim() || FALLBACK_CHANNEL_ID;
+      const channelUsername = env.CHANNEL_USERNAME?.trim() || FALLBACK_CHANNEL_USERNAME;
+
+      console.log("=== CONFIG ===");
+      console.log("CHANNEL_ID:", channelId);
+      console.log("CHANNEL_USERNAME:", channelUsername);
+
       // ==========================================
       // 📢 /start Command
       // ==========================================
@@ -39,14 +51,15 @@ export default {
 
         let isJoined = false;
         try {
-          const member = await ctx.api.getChatMember(env.CHANNEL_ID, userId);
+          const member = await ctx.api.getChatMember(channelId, userId);
           const status = member.status;
           isJoined =
             status === "creator" ||
             status === "administrator" ||
             status === "member" ||
             status === "restricted";
-        } catch (e) {
+        } catch (e: any) {
+          console.error("getChatMember error:", e?.message || e);
           // စစ်လို့မရရင် Join ဖြစ်ပြီးလို့ ယူဆ (Fail-Open)
           isJoined = true;
         }
@@ -55,7 +68,7 @@ export default {
           const keyboard = new InlineKeyboard()
             .url(
               "📢 Join ZhostTech",
-              `https://t.me/${env.CHANNEL_USERNAME.replace("@", "")}`
+              `https://t.me/${channelUsername.replace("@", "")}`
             )
             .row()
             .text("✅ Check", "check_join");
@@ -89,7 +102,7 @@ export default {
 
         let isJoined = false;
         try {
-          const member = await ctx.api.getChatMember(env.CHANNEL_ID, userId);
+          const member = await ctx.api.getChatMember(channelId, userId);
           const status = member.status;
           isJoined =
             status === "creator" ||
@@ -126,7 +139,7 @@ export default {
             `🤖 Bot: Free Photo Backup Bot\n` +
             `📅 Version: 1.0.0\n` +
             `━━━━━━━━━━━━━━━━\n\n` +
-            `📢 Channel: https://t.me/${env.CHANNEL_USERNAME.replace("@", "")}`
+            `📢 Channel: https://t.me/${channelUsername.replace("@", "")}`
         );
       });
 
