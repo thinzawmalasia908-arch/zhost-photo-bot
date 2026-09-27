@@ -192,6 +192,7 @@ function getBot(env: Env): Bot {
 }
 
 function setupBot(bot: Bot, env: Env) {
+  // Commands များကို အပေါ်ဆုံးမှာ ထားရပါမည်
   bot.command("start", async (ctx) => {
     const userId = ctx.from?.id;
     const name = ctx.from?.first_name || "သူငယ်ချင်း";
@@ -223,6 +224,22 @@ function setupBot(bot: Bot, env: Env) {
 
     const kb = new InlineKeyboard().text("🔐 Login", "do_login").text("📝 Create Account", "do_register");
     await ctx.reply(`🌸 ဟယ်လို... ${name} ရေ 💕\n\nဒီ Bot လေးကို သုံးဖို့ App မှာ ဖွင့်ထားတဲ့ Account လိုတယ်နော် 🌸\n\nLogin ဝင်မလား? Account အသစ် ဖွင့်မလား?`, { reply_markup: kb });
+  });
+
+  bot.command("debug", async (ctx) => {
+    let testResult = "";
+    try {
+      const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents?queries[]=limit(1)`;
+      const headers = awHeaders();
+      const res = await fetch(url, { headers });
+      const text = await res.text();
+      testResult += `\n• DocumentsDB: ${res.status}\n• Preview: ${text.slice(0, 150)}`;
+    } catch (e: any) { testResult = `\n• Error: ${e.message}`; }
+    await ctx.reply(`🔧 DEBUG\n\n📍 ${APPWRITE_ENDPOINT}\n🔑 ${APPWRITE_PROJECT_ID}\n🔐 API KEY: OK\n📁 ${APPWRITE_DATABASE_ID}\n📋 ${APPWRITE_USER_POINTS_TABLE_ID}\n📸 ${APPWRITE_PHOTO_TABLE_ID}${testResult}`);
+  });
+
+  bot.command("about", async (ctx) => {
+    await ctx.reply(`🌸 𝗔𝗯𝗼𝘂𝘁 𝗧𝗵𝗶𝘀 𝗕𝗼𝘁 💕\n\n👩‍💼 Owner: 𝗭𝗵𝗼𝘀𝘁'𝘀 𝗧𝗲𝗰𝗵𝗻𝗼𝗹𝗼𝗴𝘆 မမ\n🤖 Bot: Free Photo Backup Bot\n📅 Version: 1.0.0\n\n📢 Channel: https://t.me/${CHANNEL_USERNAME.replace("@", "")}`);
   });
 
   bot.callbackQuery("check_join", async (ctx) => {
@@ -259,11 +276,14 @@ function setupBot(bot: Bot, env: Env) {
     await ctx.editMessageText(`📝 Account အသစ် ဖွင့်မယ်နော် 💕\n\n📧 Gmail လေးကို ပို့ပေးပါဦး 🌸`);
   });
 
+  // စာသားများကို ဖမ်းမည့်အပိုင်း (အောက်ဘက်ကို ရွှေ့ထားသည်)
   bot.on("message:text", async (ctx) => {
     const userId = ctx.from?.id;
     const text = ctx.message.text.trim();
     const name = ctx.from?.first_name || "သူငယ်ချင်း";
     if (!userId) return;
+    
+    // Command တွေကို ဒီကနေ လျစ်လျူရှုမည် (အပေါ်က bot.command တွေက ဖမ်းသွားပါလိမ့်မည်)
     if (text.startsWith("/")) return;
 
     const session = await getSession(env, userId);
@@ -429,22 +449,6 @@ function setupBot(bot: Bot, env: Env) {
   });
 
   bot.callbackQuery("cancel_logout", async (ctx) => { await ctx.answerCallbackQuery({ text: "💕 ကောင်းလိုက်တာ" }); await ctx.editMessageText(MAIN_MENU_TEXT); });
-
-  bot.command("debug", async (ctx) => {
-    let testResult = "";
-    try {
-      const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents?queries[]=limit(1)`;
-      const headers = awHeaders();
-      const res = await fetch(url, { headers });
-      const text = await res.text();
-      testResult += `\n• DocumentsDB: ${res.status}\n• Preview: ${text.slice(0, 150)}`;
-    } catch (e: any) { testResult = `\n• Error: ${e.message}`; }
-    await ctx.reply(`🔧 DEBUG\n\n📍 ${APPWRITE_ENDPOINT}\n🔑 ${APPWRITE_PROJECT_ID}\n🔐 API KEY: OK\n📁 ${APPWRITE_DATABASE_ID}\n📋 ${APPWRITE_USER_POINTS_TABLE_ID}\n📸 ${APPWRITE_PHOTO_TABLE_ID}${testResult}`);
-  });
-
-  bot.command("about", async (ctx) => {
-    await ctx.reply(`🌸 𝗔𝗯𝗼𝘂𝘁 𝗧𝗵𝗶𝘀 𝗕𝗼𝘁 💕\n\n👩‍💼 Owner: 𝗭𝗵𝗼𝘀𝘁'𝘀 𝗧𝗲𝗰𝗵𝗻𝗼𝗹𝗼𝗴𝘆 မမ\n🤖 Bot: Free Photo Backup Bot\n📅 Version: 1.0.0\n\n📢 Channel: https://t.me/${CHANNEL_USERNAME.replace("@", "")}`);
-  });
 }
 
 export default {
