@@ -18,7 +18,7 @@ export interface Env {
 // ============================================
 // HARDCODED CONFIG — Env မရရင် ဒါတွေ သုံးမယ်
 // ============================================
-const APPWRITE_ENDPOINT = "https://cloud.appwrite.io/v1";
+const APPWRITE_ENDPOINT = "https://fra.cloud.appwrite.io/v1";
 const APPWRITE_DATABASE_ID = "6ab8a2dd002493abffc1";
 const APPWRITE_PHOTO_TABLE_ID = "6ab8a3170023949dc624";
 const APPWRITE_USER_POINTS_TABLE_ID = "user_points";
