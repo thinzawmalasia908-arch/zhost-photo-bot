@@ -16,7 +16,7 @@ export interface Env {
 }
 
 // ============================================
-// HARDCODED FALLBACKS — Env မရရင် ဒါတွေ သုံးမယ်
+// HARDCODED FALLBACKS
 // ============================================
 const APPWRITE_ENDPOINT = "https://fra.cloud.appwrite.io/v1";
 const APPWRITE_PROJECT_ID = "6ab8a17c0009e545239a";
@@ -30,49 +30,15 @@ const APK_LINK = "https://t.me/ZhostTech/123";
 const DAILY_POINTS = 2;
 const INVITE_POINTS = 2;
 
-// Safe fetch — Error ကို အတိအကျ ပြ
-async function safeFetch(url: string, options: RequestInit, label: string): Promise<any> {
-  console.log(`[${label}] URL: ${url}`);
-  let res: Response;
-  try {
-    res = await fetch(url, options);
-  } catch (e: any) {
-    throw new Error(`❌ [${label}] Network Error: ${e?.message}\n🔗 URL: ${url}`);
-  }
-  const text = await res.text();
-  console.log(`[${label}] Status: ${res.status}`);
-  console.log(`[${label}] Preview: ${text.slice(0, 200)}`);
-  if (text.trim().startsWith("<")) {
-    throw new Error(
-      `❌ [${label}] HTML ပြန်လာတယ် (status ${res.status})\n\n🔗 URL:\n${url}\n\n📄 Preview:\n${text.slice(0, 200)}`
-    );
-  }
-  let data: any;
-  try {
-    data = JSON.parse(text);
-  } catch (e: any) {
-    throw new Error(`❌ [${label}] Invalid JSON (status ${res.status})\n\n🔗 URL:\n${url}\n\n📄 ${text.slice(0, 200)}`);
-  }
-  if (!res.ok) {
-    throw new Error(
-      `❌ [${label}] HTTP ${res.status}\n\n🔗 URL:\n${url}\n\n📄 Message: ${data.message || "Unknown"}\n📄 Type: ${data.type || "Unknown"}\n📄 Code: ${data.code || "Unknown"}`
-    );
-  }
-  return data;
-}
-
 function getProjectId(env: Env): string {
   return (env.APPWRITE_PROJECT_ID || "").trim() || APPWRITE_PROJECT_ID;
 }
-
 function getApiKey(env: Env): string {
   return (env.APPWRITE_API_KEY || "").trim();
 }
-
 function getEndpoint(env: Env): string {
   return (env.APPWRITE_ENDPOINT || "").trim() || APPWRITE_ENDPOINT;
 }
-
 function awHeaders(env: Env) {
   return {
     "Content-Type": "application/json",
@@ -81,21 +47,86 @@ function awHeaders(env: Env) {
   };
 }
 
+// ============================================
+// Dual-path Fetch (TablesDB + DocumentsDB)
+// ============================================
+async function dualFetch(
+  env: Env,
+  tablePath: string,
+  documentPath: string,
+  options: RequestInit,
+  label: string
+): Promise<any> {
+  const endpoint = getEndpoint(env);
+  const url1 = `${endpoint}${tablePath}`;
+  const url2 = `${endpoint}${documentPath}`;
+
+  const attempts = [url1, url2];
+  let lastError = "";
+
+  for (const url of attempts) {
+    console.log(`[${label}] Trying: ${url}`);
+    try {
+      const res = await fetch(url, { ...options, headers: awHeaders(env) });
+      const text = await res.text();
+      console.log(`[${label}] Status: ${res.status}, Preview: ${text.slice(0, 120)}`);
+
+      if (text.trim().startsWith("<")) {
+        lastError = `HTML (${res.status})`;
+        continue;
+      }
+
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        lastError = `Invalid JSON (${res.status})`;
+        continue;
+      }
+
+      if (res.ok) return data;
+
+      // If error is not "not found", return the error
+      if (data.code !== 404 && data.type !== "general_route_not_found") {
+        throw new Error(
+          `[${label}] HTTP ${res.status}\n${data.message || "Unknown"}\nType: ${data.type || "?"}`
+        );
+      }
+      lastError = `HTTP ${res.status}: ${data.message || "Not found"}`;
+    } catch (e: any) {
+      lastError = e?.message || "Unknown error";
+      console.log(`[${label}] Error: ${lastError}`);
+    }
+  }
+
+  throw new Error(`❌ [${label}] Both paths failed.\nLast error: ${lastError}`);
+}
+
+// ============================================
+// Auth API
+// ============================================
 async function awLogin(env: Env, email: string, password: string): Promise<any> {
   const url = `${getEndpoint(env)}/account/sessions/email`;
-  return await safeFetch(url, {
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Appwrite-Project": getProjectId(env),
     },
     body: JSON.stringify({ email, password }),
-  }, "awLogin");
+  });
+  const text = await res.text();
+  let data: any;
+  try { data = JSON.parse(text); } catch (e) {
+    throw new Error(`awLogin: HTML returned (${res.status})`);
+  }
+  if (!res.ok) throw new Error(`awLogin: ${data.message || "Login failed"}`);
+  return data;
 }
 
 async function awRegister(env: Env, email: string, password: string): Promise<any> {
   const url = `${getEndpoint(env)}/account`;
-  return await safeFetch(url, {
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -107,64 +138,122 @@ async function awRegister(env: Env, email: string, password: string): Promise<an
       password,
       name: email.split("@")[0],
     }),
-  }, "awRegister");
+  });
+  const text = await res.text();
+  let data: any;
+  try { data = JSON.parse(text); } catch (e) {
+    throw new Error(`awRegister: HTML returned (${res.status})`);
+  }
+  if (!res.ok) throw new Error(`awRegister: ${data.message || "Register failed"}`);
+  return data;
 }
 
+// ============================================
+// user_points API
+// ============================================
 async function awGetUserPoints(env: Env, userId: string): Promise<any | null> {
-  const query = encodeURIComponent(`equal("user_id", ["${userId}"])`);
-  const url = `${getEndpoint(env)}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows?queries[]=${query}&queries[]=${encodeURIComponent("limit(1)")}`;
-  const data = await safeFetch(url, { method: "GET", headers: awHeaders(env) }, "awGetUserPoints");
-  if (!data.rows || data.rows.length === 0) return null;
-  return data.rows[0];
+  const q = encodeURIComponent(`equal("user_id", ["${userId}"])`);
+  const l = encodeURIComponent("limit(1)");
+  const tablePath = `/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows?queries[]=${q}&queries[]=${l}`;
+  const docPath = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents?queries[]=${q}&queries[]=${l}`;
+
+  try {
+    const data = await dualFetch(env, tablePath, docPath, { method: "GET" }, "awGetUserPoints");
+    const list = data.rows || data.documents || [];
+    return list.length > 0 ? list[0] : null;
+  } catch (e) {
+    // 404 means no rows yet — return null
+    console.log("awGetUserPoints not found, returning null");
+    return null;
+  }
 }
 
 async function awCreateUserPoints(env: Env, userId: string, chatId: number, invitedBy: string = ""): Promise<any> {
-  const url = `${getEndpoint(env)}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows`;
-  return await safeFetch(url, {
-    method: "POST",
-    headers: awHeaders(env),
-    body: JSON.stringify({
-      rowId: "unique()",
-      data: {
-        user_id: userId,
-        telegram_chat_id: String(chatId),
-        points: 0,
-        last_daily: "",
-        total_invites: 0,
-        invited_by: invitedBy,
+  const data = {
+    user_id: userId,
+    telegram_chat_id: String(chatId),
+    points: 0,
+    last_daily: "",
+    total_invites: 0,
+    invited_by: invitedBy,
+  };
+
+  const tablePath = `/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows`;
+  const docPath = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents`;
+
+  // Try TablesDB first
+  try {
+    return await dualFetch(
+      env,
+      tablePath,
+      docPath,
+      {
+        method: "POST",
+        body: JSON.stringify({ rowId: "unique()", documentId: "unique()", data }),
       },
-    }),
-  }, "awCreateUserPoints");
+      "awCreateUserPoints"
+    );
+  } catch (e) {
+    console.log("Create attempt with unique() failed, trying without id");
+    return await dualFetch(
+      env,
+      tablePath,
+      docPath,
+      {
+        method: "POST",
+        body: JSON.stringify({ data }),
+      },
+      "awCreateUserPoints2"
+    );
+  }
 }
 
 async function awUpdateUserPoints(env: Env, rowId: string, updates: any): Promise<any> {
-  const url = `${getEndpoint(env)}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows/${rowId}`;
-  return await safeFetch(url, {
-    method: "PATCH",
-    headers: awHeaders(env),
-    body: JSON.stringify({ data: updates }),
-  }, "awUpdateUserPoints");
+  const tablePath = `/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows/${rowId}`;
+  const docPath = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents/${rowId}`;
+
+  return await dualFetch(
+    env,
+    tablePath,
+    docPath,
+    { method: "PATCH", body: JSON.stringify({ data: updates }) },
+    "awUpdateUserPoints"
+  );
 }
 
+// ============================================
+// photos API
+// ============================================
 async function awGetPhotos(env: Env, userId: string, limit: number): Promise<any[]> {
-  const url = `${getEndpoint(env)}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows?queries[]=${encodeURIComponent(`equal("user_id", ["${userId}"])`)}&queries[]=${encodeURIComponent(`limit(${limit})`)}`;
+  const q = encodeURIComponent(`equal("user_id", ["${userId}"])`);
+  const l = encodeURIComponent(`limit(${limit})`);
+  const tablePath = `/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows?queries[]=${q}&queries[]=${l}`;
+  const docPath = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents?queries[]=${q}&queries[]=${l}`;
+
   try {
-    const data = await safeFetch(url, { method: "GET", headers: awHeaders(env) }, "awGetPhotos");
-    return data.rows || [];
+    const data = await dualFetch(env, tablePath, docPath, { method: "GET" }, "awGetPhotos");
+    return data.rows || data.documents || [];
   } catch (e) {
-    console.error("awGetPhotos error:", e);
+    console.log("awGetPhotos error:", e);
     return [];
   }
 }
 
 async function awDeletePhoto(env: Env, rowId: string, fileId: string): Promise<void> {
+  const endpoint = getEndpoint(env);
+  // Try both delete paths
   try {
-    await fetch(`${getEndpoint(env)}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows/${rowId}`, {
+    await fetch(`${endpoint}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows/${rowId}`, {
       method: "DELETE", headers: awHeaders(env),
     });
   } catch (e) {}
   try {
-    await fetch(`${getEndpoint(env)}/storage/buckets/${APPWRITE_BUCKET_ID}/files/${fileId}`, {
+    await fetch(`${endpoint}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents/${rowId}`, {
+      method: "DELETE", headers: awHeaders(env),
+    });
+  } catch (e) {}
+  try {
+    await fetch(`${endpoint}/storage/buckets/${APPWRITE_BUCKET_ID}/files/${fileId}`, {
       method: "DELETE", headers: awHeaders(env),
     });
   } catch (e) {}
@@ -342,8 +431,8 @@ function setupBot(bot: Bot, env: Env) {
     if (!state) return;
 
     if (state.state === "waiting_email") {
-      if (!text.includes("@")) {
-        await ctx.reply("🥺 Gmail ပုံစံ မမှန်ဘူးနော်... ပြန်ပို့ပေးပါဦး 💕");
+      if (!text.includes("@") || text.startsWith("@")) {
+        await ctx.reply("🥺 Gmail ပုံစံ မမှန်ဘူးနော်... ပြန်ပို့ပေးပါဦး 💕\n\nဥပမာ - zawmyo@gmail.com");
         return;
       }
       await setState(env, userId, "waiting_password", {
@@ -351,7 +440,7 @@ function setupBot(bot: Bot, env: Env) {
         email: text,
         referrerId: state.referrerId,
       });
-      await ctx.reply(`💕 ကောင်းလိုက်တာ...\n\n🔒 Password လေးကို ပို့ပေးပါဦး 🌸`);
+      await ctx.reply(`💕 ကောင်းလိုက်တာ...\n\n🔒 Password လေးကို ပို့ပေးပါဦး 🌸\n\n(အနည်းဆုံး ၈ လုံး ရှိရမယ်နော်)`);
       return;
     }
 
@@ -359,6 +448,11 @@ function setupBot(bot: Bot, env: Env) {
       const email = state.email;
       const password = text;
       const action = state.action;
+
+      if (password.length < 8) {
+        await ctx.reply("🥺 Password က အနည်းဆုံး ၈ လုံး ရှိရမယ်နော်... ပြန်ပို့ပေးပါဦး 💕");
+        return;
+      }
 
       try {
         let user;
@@ -417,7 +511,8 @@ function setupBot(bot: Bot, env: Env) {
       }
 
       const np = (up.points || 0) + DAILY_POINTS;
-      await awUpdateUserPoints(env, up.$id, { points: np, last_daily: new Date().toISOString() });
+      const rowId = up.$id || up.id || up._id;
+      await awUpdateUserPoints(env, rowId, { points: np, last_daily: new Date().toISOString() });
       await ctx.reply(`💕 အိုး... ${ctx.from?.first_name || "ရတနာ"} လာပြီနော် 🌸\n\nဒီနေ့အတွက် Daily Bonus လေး ယူလိုက်ပါ 💫\n\n✨ +${DAILY_POINTS} Points ရသွားပြီ 💖\n💰 လက်ရှိ Points: ${np}`);
     } catch (e: any) {
       await ctx.reply(`🥺 Error:\n\n${e.message}`);
@@ -467,18 +562,19 @@ function setupBot(bot: Bot, env: Env) {
       const cost = n;
       const up = await awGetUserPoints(env, session.userId);
       const points = up?.points || 0;
+      const rowId = up?.$id || up?.id;
 
       if (points < cost) {
         await ctx.editMessageText(`🥺 Points မလုံလောက်ဘူးနော် 💔\n\nလိုအပ်: ${cost} Points\nသင့်မှာ: ${points} Points\n\nDaily နှိပ်ပြီး စုလိုက်ရအောင် 🌸`);
         return;
       }
 
-      await awUpdateUserPoints(env, up.$id, { points: points - cost });
+      await awUpdateUserPoints(env, rowId, { points: points - cost });
       await ctx.editMessageText(`🌸 ခဏစောင့်ပါနော်... ရှာနေတယ် 💕`);
 
       const photos = await awGetPhotos(env, session.userId, cost);
       if (!photos || photos.length === 0) {
-        await awUpdateUserPoints(env, up.$id, { points: points });
+        await awUpdateUserPoints(env, rowId, { points: points });
         await ctx.editMessageText(`🥺 ဓာတ်ပုံ မရှိတော့ဘူးနော် 💔\n\nApp ကနေ ပြန် Backup လုပ်ပေးပါဦး 🌸`);
         return;
       }
@@ -489,7 +585,8 @@ function setupBot(bot: Bot, env: Env) {
           const bytes = await awGetPhotoBytes(env, photo.file_id);
           if (!bytes) continue;
           await ctx.replyWithPhoto(new InputFile(bytes, "photo.jpg"));
-          await awDeletePhoto(env, photo.$id, photo.file_id);
+          const photoRowId = photo.$id || photo.id;
+          await awDeletePhoto(env, photoRowId, photo.file_id);
           sent++;
         } catch (e: any) {}
       }
@@ -565,21 +662,37 @@ function setupBot(bot: Bot, env: Env) {
     await ctx.editMessageText(MAIN_MENU_TEXT);
   });
 
-  // ============ /debug ============
   bot.command("debug", async (ctx) => {
+    const endpoint = getEndpoint(env);
     const projectId = getProjectId(env);
     const apiKey = getApiKey(env);
-    let apiTestResult = "";
+
+    let tableTest = "", docTest = "";
     try {
-      const testUrl = `${getEndpoint(env)}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows?queries[]=${encodeURIComponent("limit(1)")}`;
-      const res = await fetch(testUrl, { headers: awHeaders(env) });
-      const text = await res.text();
-      apiTestResult = `\n\n🧪 API Test:\n• Status: ${res.status}\n• Response: ${text.slice(0, 200)}`;
-    } catch (e: any) {
-      apiTestResult = `\n\n🧪 API Test:\n• Error: ${e.message}`;
-    }
+      const q = encodeURIComponent(`limit(1)`);
+      const url1 = `${endpoint}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows?queries[]=${q}`;
+      const res1 = await fetch(url1, { headers: awHeaders(env) });
+      const t1 = await res1.text();
+      tableTest = `\n• TablesDB Status: ${res1.status}\n• Preview: ${t1.slice(0, 100)}`;
+    } catch (e: any) { tableTest = `\n• TablesDB Error: ${e.message}`; }
+
+    try {
+      const q = encodeURIComponent(`limit(1)`);
+      const url2 = `${endpoint}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents?queries[]=${q}`;
+      const res2 = await fetch(url2, { headers: awHeaders(env) });
+      const t2 = await res2.text();
+      docTest = `\n• DocumentsDB Status: ${res2.status}\n• Preview: ${t2.slice(0, 100)}`;
+    } catch (e: any) { docTest = `\n• DocumentsDB Error: ${e.message}`; }
+
     await ctx.reply(
-      `🔧 𝗗𝗘𝗕𝗨𝗚 𝗜𝗡𝗙𝗢\n\n📍 ENDPOINT:\n${getEndpoint(env)}\n\n📁 DATABASE_ID:\n${APPWRITE_DATABASE_ID}\n\n📋 USER_POINTS_TABLE:\n${APPWRITE_USER_POINTS_TABLE_ID}\n\n📸 PHOTO_TABLE:\n${APPWRITE_PHOTO_TABLE_ID}\n\n🔑 PROJECT_ID:\n${projectId}\n\n🔐 API_KEY:\n${apiKey ? apiKey.slice(0, 25) + "..." : "❌ EMPTY"}\n\n🤖 BOT_TOKEN:\n${env.BOT_TOKEN ? "✅ OK" : "❌ EMPTY"}\n\n💾 KV:\n${env.BOT_SESSIONS ? "✅ OK" : "❌ EMPTY"}` + apiTestResult
+      `🔧 𝗗𝗘𝗕𝗨𝗚\n\n` +
+      `📍 ENDPOINT:\n${endpoint}\n\n` +
+      `🔑 PROJECT_ID:\n${projectId}\n\n` +
+      `🔐 API_KEY:\n${apiKey ? apiKey.slice(0, 25) + "..." : "❌ EMPTY"}\n\n` +
+      `📁 DB_ID: ${APPWRITE_DATABASE_ID}\n` +
+      `📋 USER_POINTS_TABLE: ${APPWRITE_USER_POINTS_TABLE_ID}\n` +
+      `📸 PHOTO_TABLE: ${APPWRITE_PHOTO_TABLE_ID}\n\n` +
+      `🧪 API Test:${tableTest}${docTest}`
     );
   });
 
