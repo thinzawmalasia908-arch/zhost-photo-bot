@@ -1,6 +1,6 @@
 import { Bot, webhookCallback, InlineKeyboard, InputFile } from "grammy";
 
-// ===========================================
+// ==========================================
 // HARDCODED CREDENTIALS
 // ===========================================
 const BOT_TOKEN = "8947544923:AAG4Wrh70eqP4ybIfpsiPjWDriLXeMNgrw8";
