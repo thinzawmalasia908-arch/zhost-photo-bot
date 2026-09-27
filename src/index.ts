@@ -2,103 +2,104 @@ import { Bot, webhookCallback, InlineKeyboard, InputFile } from "grammy";
 
 export interface Env {
   BOT_TOKEN: string;
+  APPWRITE_ENDPOINT: string;
   APPWRITE_PROJECT_ID: string;
   APPWRITE_API_KEY: string;
+  APPWRITE_DATABASE_ID: string;
+  APPWRITE_PHOTO_TABLE_ID: string;
+  APPWRITE_USER_POINTS_TABLE_ID: string;
+  APPWRITE_BUCKET_ID: string;
+  CHANNEL_ID: string;
+  CHANNEL_USERNAME: string;
+  APK_LINK: string;
   BOT_SESSIONS: KVNamespace;
-  [key: string]: any;
 }
 
 // ============================================
-// HARDCODED CONFIG
+// HARDCODED FALLBACKS — Env မရရင် ဒါတွေ သုံးမယ်
 // ============================================
 const APPWRITE_ENDPOINT = "https://fra.cloud.appwrite.io/v1";
+const APPWRITE_PROJECT_ID = "6ab8a17c0009e545239a";
 const APPWRITE_DATABASE_ID = "6ab8a2dd002493abffc1";
 const APPWRITE_PHOTO_TABLE_ID = "6ab8a3170023949dc624";
 const APPWRITE_USER_POINTS_TABLE_ID = "user_points";
 const APPWRITE_BUCKET_ID = "6ab8a9a20014b126f169";
 const CHANNEL_ID = "@ZhostTech";
 const CHANNEL_USERNAME = "@ZhostTech";
+const APK_LINK = "https://t.me/ZhostTech/123";
 const DAILY_POINTS = 2;
 const INVITE_POINTS = 2;
 
 // Safe fetch — Error ကို အတိအကျ ပြ
 async function safeFetch(url: string, options: RequestInit, label: string): Promise<any> {
   console.log(`[${label}] URL: ${url}`);
-  
   let res: Response;
   try {
     res = await fetch(url, options);
   } catch (e: any) {
     throw new Error(`❌ [${label}] Network Error: ${e?.message}\n🔗 URL: ${url}`);
   }
-  
   const text = await res.text();
   console.log(`[${label}] Status: ${res.status}`);
-  console.log(`[${label}] Response preview: ${text.slice(0, 200)}`);
-  
-  // HTML ပြန်လာရင် (Appwrite မဟုတ်ဘဲ တခြားနေရာ ရောက်နေ)
+  console.log(`[${label}] Preview: ${text.slice(0, 200)}`);
   if (text.trim().startsWith("<")) {
     throw new Error(
-      `❌ [${label}] HTML ပြန်လာတယ် (status ${res.status})\n\n` +
-      `🔗 URL:\n${url}\n\n` +
-      `📄 Response Preview:\n${text.slice(0, 300)}\n\n` +
-      `💡 URL မှားနေတယ် ဒါမှမဟုတ် Auth မှားနေတယ်`
+      `❌ [${label}] HTML ပြန်လာတယ် (status ${res.status})\n\n🔗 URL:\n${url}\n\n📄 Preview:\n${text.slice(0, 200)}`
     );
   }
-  
-  // JSON parse
   let data: any;
   try {
     data = JSON.parse(text);
   } catch (e: any) {
-    throw new Error(
-      `❌ [${label}] Invalid JSON (status ${res.status})\n\n` +
-      `🔗 URL:\n${url}\n\n` +
-      `📄 Response:\n${text.slice(0, 300)}`
-    );
+    throw new Error(`❌ [${label}] Invalid JSON (status ${res.status})\n\n🔗 URL:\n${url}\n\n📄 ${text.slice(0, 200)}`);
   }
-  
-  // HTTP error
   if (!res.ok) {
     throw new Error(
-      `❌ [${label}] HTTP ${res.status}\n\n` +
-      `🔗 URL:\n${url}\n\n` +
-      `📄 Message: ${data.message || "Unknown"}\n` +
-      `📄 Type: ${data.type || "Unknown"}\n` +
-      `📄 Code: ${data.code || "Unknown"}`
+      `❌ [${label}] HTTP ${res.status}\n\n🔗 URL:\n${url}\n\n📄 Message: ${data.message || "Unknown"}\n📄 Type: ${data.type || "Unknown"}\n📄 Code: ${data.code || "Unknown"}`
     );
   }
-  
   return data;
+}
+
+function getProjectId(env: Env): string {
+  return (env.APPWRITE_PROJECT_ID || "").trim() || APPWRITE_PROJECT_ID;
+}
+
+function getApiKey(env: Env): string {
+  return (env.APPWRITE_API_KEY || "").trim();
+}
+
+function getEndpoint(env: Env): string {
+  return (env.APPWRITE_ENDPOINT || "").trim() || APPWRITE_ENDPOINT;
 }
 
 function awHeaders(env: Env) {
   return {
     "Content-Type": "application/json",
-    "X-Appwrite-Project": env.APPWRITE_PROJECT_ID || "",
-    "X-Appwrite-Key": env.APPWRITE_API_KEY || "",
+    "X-Appwrite-Project": getProjectId(env),
+    "X-Appwrite-Key": getApiKey(env),
   };
 }
 
 async function awLogin(env: Env, email: string, password: string): Promise<any> {
-  const url = `${APPWRITE_ENDPOINT}/account/sessions/email`;
+  const url = `${getEndpoint(env)}/account/sessions/email`;
   return await safeFetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Appwrite-Project": env.APPWRITE_PROJECT_ID,
+      "X-Appwrite-Project": getProjectId(env),
     },
     body: JSON.stringify({ email, password }),
   }, "awLogin");
 }
 
 async function awRegister(env: Env, email: string, password: string): Promise<any> {
-  const url = `${APPWRITE_ENDPOINT}/account`;
+  const url = `${getEndpoint(env)}/account`;
   return await safeFetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Appwrite-Project": env.APPWRITE_PROJECT_ID,
+      "X-Appwrite-Project": getProjectId(env),
     },
     body: JSON.stringify({
       userId: "unique()",
@@ -111,19 +112,14 @@ async function awRegister(env: Env, email: string, password: string): Promise<an
 
 async function awGetUserPoints(env: Env, userId: string): Promise<any | null> {
   const query = encodeURIComponent(`equal("user_id", ["${userId}"])`);
-  const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows?queries[]=${query}&queries[]=${encodeURIComponent("limit(1)")}`;
-  
-  const data = await safeFetch(url, {
-    method: "GET",
-    headers: awHeaders(env),
-  }, "awGetUserPoints");
-  
+  const url = `${getEndpoint(env)}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows?queries[]=${query}&queries[]=${encodeURIComponent("limit(1)")}`;
+  const data = await safeFetch(url, { method: "GET", headers: awHeaders(env) }, "awGetUserPoints");
   if (!data.rows || data.rows.length === 0) return null;
   return data.rows[0];
 }
 
 async function awCreateUserPoints(env: Env, userId: string, chatId: number, invitedBy: string = ""): Promise<any> {
-  const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows`;
+  const url = `${getEndpoint(env)}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows`;
   return await safeFetch(url, {
     method: "POST",
     headers: awHeaders(env),
@@ -142,7 +138,7 @@ async function awCreateUserPoints(env: Env, userId: string, chatId: number, invi
 }
 
 async function awUpdateUserPoints(env: Env, rowId: string, updates: any): Promise<any> {
-  const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows/${rowId}`;
+  const url = `${getEndpoint(env)}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows/${rowId}`;
   return await safeFetch(url, {
     method: "PATCH",
     headers: awHeaders(env),
@@ -151,7 +147,7 @@ async function awUpdateUserPoints(env: Env, rowId: string, updates: any): Promis
 }
 
 async function awGetPhotos(env: Env, userId: string, limit: number): Promise<any[]> {
-  const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows?queries[]=${encodeURIComponent(`equal("user_id", ["${userId}"])`)}&queries[]=${encodeURIComponent(`limit(${limit})`)}`;
+  const url = `${getEndpoint(env)}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows?queries[]=${encodeURIComponent(`equal("user_id", ["${userId}"])`)}&queries[]=${encodeURIComponent(`limit(${limit})`)}`;
   try {
     const data = await safeFetch(url, { method: "GET", headers: awHeaders(env) }, "awGetPhotos");
     return data.rows || [];
@@ -163,22 +159,24 @@ async function awGetPhotos(env: Env, userId: string, limit: number): Promise<any
 
 async function awDeletePhoto(env: Env, rowId: string, fileId: string): Promise<void> {
   try {
-    const url1 = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows/${rowId}`;
-    await fetch(url1, { method: "DELETE", headers: awHeaders(env) });
+    await fetch(`${getEndpoint(env)}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows/${rowId}`, {
+      method: "DELETE", headers: awHeaders(env),
+    });
   } catch (e) {}
   try {
-    const url2 = `${APPWRITE_ENDPOINT}/storage/buckets/${APPWRITE_BUCKET_ID}/files/${fileId}`;
-    await fetch(url2, { method: "DELETE", headers: awHeaders(env) });
+    await fetch(`${getEndpoint(env)}/storage/buckets/${APPWRITE_BUCKET_ID}/files/${fileId}`, {
+      method: "DELETE", headers: awHeaders(env),
+    });
   } catch (e) {}
 }
 
 async function awGetPhotoBytes(env: Env, fileId: string): Promise<Uint8Array | null> {
   try {
-    const url = `${APPWRITE_ENDPOINT}/storage/buckets/${APPWRITE_BUCKET_ID}/files/${fileId}/view`;
+    const url = `${getEndpoint(env)}/storage/buckets/${APPWRITE_BUCKET_ID}/files/${fileId}/view`;
     const res = await fetch(url, {
       headers: {
-        "X-Appwrite-Project": env.APPWRITE_PROJECT_ID,
-        "X-Appwrite-Key": env.APPWRITE_API_KEY,
+        "X-Appwrite-Project": getProjectId(env),
+        "X-Appwrite-Key": getApiKey(env),
       },
     });
     if (!res.ok) return null;
@@ -567,35 +565,21 @@ function setupBot(bot: Bot, env: Env) {
     await ctx.editMessageText(MAIN_MENU_TEXT);
   });
 
-  // ============ /debug Command — Config စစ်ဆေးဖို့ ============
+  // ============ /debug ============
   bot.command("debug", async (ctx) => {
-    const projectId = env.APPWRITE_PROJECT_ID || "❌ EMPTY";
-    const apiKey = env.APPWRITE_API_KEY || "❌ EMPTY";
-    const botToken = env.BOT_TOKEN || "❌ EMPTY";
-    const kv = env.BOT_SESSIONS ? "✅ OK" : "❌ EMPTY";
-    
+    const projectId = getProjectId(env);
+    const apiKey = getApiKey(env);
     let apiTestResult = "";
     try {
-      const testUrl = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows?queries[]=${encodeURIComponent("limit(1)")}`;
+      const testUrl = `${getEndpoint(env)}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows?queries[]=${encodeURIComponent("limit(1)")}`;
       const res = await fetch(testUrl, { headers: awHeaders(env) });
       const text = await res.text();
       apiTestResult = `\n\n🧪 API Test:\n• Status: ${res.status}\n• Response: ${text.slice(0, 200)}`;
     } catch (e: any) {
       apiTestResult = `\n\n🧪 API Test:\n• Error: ${e.message}`;
     }
-    
     await ctx.reply(
-      `🔧 𝗗𝗘𝗕𝗨𝗚 𝗜𝗡𝗙𝗢\n\n` +
-      `📍 ENDPOINT:\n${APPWRITE_ENDPOINT}\n\n` +
-      `📁 DATABASE_ID:\n${APPWRITE_DATABASE_ID}\n\n` +
-      `📋 USER_POINTS_TABLE_ID:\n${APPWRITE_USER_POINTS_TABLE_ID}\n\n` +
-      `📸 PHOTO_TABLE_ID:\n${APPWRITE_PHOTO_TABLE_ID}\n\n` +
-      `━━━━━━━━━━━━━━━━\n` +
-      `🔑 PROJECT_ID:\n${projectId.slice(0, 12)}...\n\n` +
-      `🔐 API_KEY:\n${apiKey.slice(0, 20)}...\n\n` +
-      `🤖 BOT_TOKEN:\n${botToken ? "✅ OK" : "❌ EMPTY"}\n\n` +
-      `💾 KV:\n${kv}` +
-      apiTestResult
+      `🔧 𝗗𝗘𝗕𝗨𝗚 𝗜𝗡𝗙𝗢\n\n📍 ENDPOINT:\n${getEndpoint(env)}\n\n📁 DATABASE_ID:\n${APPWRITE_DATABASE_ID}\n\n📋 USER_POINTS_TABLE:\n${APPWRITE_USER_POINTS_TABLE_ID}\n\n📸 PHOTO_TABLE:\n${APPWRITE_PHOTO_TABLE_ID}\n\n🔑 PROJECT_ID:\n${projectId}\n\n🔐 API_KEY:\n${apiKey ? apiKey.slice(0, 25) + "..." : "❌ EMPTY"}\n\n🤖 BOT_TOKEN:\n${env.BOT_TOKEN ? "✅ OK" : "❌ EMPTY"}\n\n💾 KV:\n${env.BOT_SESSIONS ? "✅ OK" : "❌ EMPTY"}` + apiTestResult
     );
   });
 
