@@ -9,7 +9,8 @@ const APPWRITE_ENDPOINT = "https://fra.cloud.appwrite.io/v1";
 const APPWRITE_PROJECT_ID = "6ab8a17c0009e545239a";
 const APPWRITE_DATABASE_ID = "6ab8a2dd002493abffc1";
 const APPWRITE_PHOTO_TABLE_ID = "6ab8a3170023949dc624";
-const APPWRITE_USER_POINTS_TABLE_ID = "user_points";
+// Fixed: Using the actual Appwrite table ID instead of the plain text name "user_points"
+const APPWRITE_USER_POINTS_TABLE_ID = "6ab8a2ef0033fa0f19ff";
 const APPWRITE_BUCKET_ID = "6ab8a9a20014b126f169";
 const CHANNEL_ID = "@ZhostTech";
 const CHANNEL_USERNAME = "@ZhostTech";
@@ -88,7 +89,7 @@ async function awRegister(email: string, password: string): Promise<any> {
 }
 
 async function awGetUserPoints(userId: string): Promise<any | null> {
-  const q = encodeURIComponent(`equal("user_id", ["${userId}"])`);
+  const q = encodeURIComponent(`equal("user_id", "${userId}")`);
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents?queries[]=${q}&queries[]=limit(1)`;
   try {
     const data = await awFetch(path, { method: "GET" });
@@ -121,7 +122,7 @@ async function awUpdateUserPoints(documentId: string, updates: any): Promise<any
 }
 
 async function awGetPhotos(userId: string, limit: number): Promise<any[]> {
-  const q = encodeURIComponent(`equal("user_id", ["${userId}"])`);
+  const q = encodeURIComponent(`equal("user_id", "${userId}")`);
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents?queries[]=${q}&queries[]=limit(${limit})`;
   try {
     const data = await awFetch(path, { method: "GET" });
@@ -192,7 +193,6 @@ function getBot(env: Env): Bot {
 }
 
 function setupBot(bot: Bot, env: Env) {
-  // Commands များကို အပေါ်ဆုံးမှာ ထားရပါမည်
   bot.command("start", async (ctx) => {
     const userId = ctx.from?.id;
     const name = ctx.from?.first_name || "သူငယ်ချင်း";
@@ -276,14 +276,12 @@ function setupBot(bot: Bot, env: Env) {
     await ctx.editMessageText(`📝 Account အသစ် ဖွင့်မယ်နော် 💕\n\n📧 Gmail လေးကို ပို့ပေးပါဦး 🌸`);
   });
 
-  // စာသားများကို ဖမ်းမည့်အပိုင်း (အောက်ဘက်ကို ရွှေ့ထားသည်)
   bot.on("message:text", async (ctx) => {
     const userId = ctx.from?.id;
     const text = ctx.message.text.trim();
     const name = ctx.from?.first_name || "သူငယ်ချင်း";
     if (!userId) return;
     
-    // Command တွေကို ဒီကနေ လျစ်လျူရှုမည် (အပေါ်က bot.command တွေက ဖမ်းသွားပါလိမ့်မည်)
     if (text.startsWith("/")) return;
 
     const session = await getSession(env, userId);
