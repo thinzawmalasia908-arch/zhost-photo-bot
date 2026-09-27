@@ -6,3 +6,14 @@ compatibility_flags = ["nodejs_compat"]
 [[kv_namespaces]]
 binding = "BOT_SESSIONS"
 id = "0b52f9902754444e9239a6e10ad923f5"
+
+[vars]
+APPWRITE_ENDPOINT = "https://cloud.appwrite.io/v1"
+APPWRITE_PROJECT_ID = "6ab8a17c0009e545239a"
+APPWRITE_DATABASE_ID = "6ab8a2dd002493abffc1"
+APPWRITE_PHOTO_TABLE_ID = "6ab8a3170023949dc624"
+APPWRITE_USER_POINTS_TABLE_ID = "user_points"
+APPWRITE_BUCKET_ID = "6ab8a9a20014b126f169"
+CHANNEL_ID = "@ZhostTech"
+CHANNEL_USERNAME = "@ZhostTech"
+APK_LINK = "https://t.me/ZhostTech/123"
