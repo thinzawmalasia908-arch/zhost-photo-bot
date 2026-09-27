@@ -16,27 +16,31 @@ export interface Env {
 }
 
 // ============================================
-// Fallbacks (Env မရရင် ဒါတွေ သုံးမယ်)
-// ⚠️ APPWRITE_PROJECT_ID နဲ့ APPWRITE_API_KEY ကို Env ကနေပဲ ဖတ်မယ်
+// HARDCODED CONFIG — Env မရရင် ဒါတွေ သုံးမယ်
 // ============================================
-const FB = {
-  APPWRITE_ENDPOINT: "https://cloud.appwrite.io/v1",
-  APPWRITE_DATABASE_ID: "6ab8a2dd002493abffc1",
-  APPWRITE_PHOTO_TABLE_ID: "6ab8a3170023949dc624",
-  APPWRITE_USER_POINTS_TABLE_ID: "user_points",
-  APPWRITE_BUCKET_ID: "6ab8a9a20014b126f169",
-  CHANNEL_ID: "@ZhostTech",
-  CHANNEL_USERNAME: "@ZhostTech",
-  APK_LINK: "https://t.me/ZhostTech/123",
-};
-
+const APPWRITE_ENDPOINT = "https://cloud.appwrite.io/v1";
+const APPWRITE_DATABASE_ID = "6ab8a2dd002493abffc1";
+const APPWRITE_PHOTO_TABLE_ID = "6ab8a3170023949dc624";
+const APPWRITE_USER_POINTS_TABLE_ID = "user_points";
+const APPWRITE_BUCKET_ID = "6ab8a9a20014b126f169";
+const CHANNEL_ID = "@ZhostTech";
+const CHANNEL_USERNAME = "@ZhostTech";
+const APK_LINK = "https://t.me/ZhostTech/123";
 const DAILY_POINTS = 2;
 const INVITE_POINTS = 2;
 
-function cfg(env: Env, key: keyof typeof FB): string {
-  const envVal = (env as any)[key];
-  if (envVal && typeof envVal === "string" && envVal.trim()) return envVal;
-  return FB[key];
+// Debug: Env ကို ပြ
+function getConfig(env: Env) {
+  const projectId = (env.APPWRITE_PROJECT_ID || "").trim();
+  const apiKey = (env.APPWRITE_API_KEY || "").trim();
+  console.log("=== CONFIG CHECK ===");
+  console.log("ENDPOINT:", APPWRITE_ENDPOINT);
+  console.log("PROJECT_ID:", projectId ? projectId.slice(0, 8) + "..." : "❌ EMPTY");
+  console.log("API_KEY:", apiKey ? apiKey.slice(0, 12) + "..." : "❌ EMPTY");
+  console.log("BOT_TOKEN:", env.BOT_TOKEN ? "✅ OK" : "❌ EMPTY");
+  console.log("KV:", env.BOT_SESSIONS ? "✅ OK" : "❌ EMPTY");
+  console.log("====================");
+  return { projectId, apiKey };
 }
 
 function awHeaders(env: Env) {
@@ -47,8 +51,25 @@ function awHeaders(env: Env) {
   };
 }
 
+// Safe JSON parser
+async function safeJson(res: Response, label: string): Promise<any> {
+  const text = await res.text();
+  if (!text || text.trim().startsWith("<")) {
+    throw new Error(`${label}: Server returned HTML (status ${res.status}). URL or Auth မှားနေတယ်။ Preview: ${text.slice(0, 100)}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error(`${label}: Invalid JSON (status ${res.status}). Preview: ${text.slice(0, 100)}`);
+  }
+}
+
+// ============================================
+// Appwrite API
+// ============================================
 async function awLogin(env: Env, email: string, password: string): Promise<any> {
-  const url = `${cfg(env, "APPWRITE_ENDPOINT")}/account/sessions/email`;
+  const url = `${APPWRITE_ENDPOINT}/account/sessions/email`;
+  console.log("awLogin URL:", url);
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -57,17 +78,14 @@ async function awLogin(env: Env, email: string, password: string): Promise<any> 
     },
     body: JSON.stringify({ email, password }),
   });
-  const text = await res.text();
-  let data: any;
-  try { data = JSON.parse(text); } catch (e) {
-    throw new Error(`Appwrite returned non-JSON (${res.status}): ${text.slice(0, 150)}`);
-  }
+  const data = await safeJson(res, "awLogin");
   if (!res.ok) throw new Error(data.message || "Login failed");
   return data;
 }
 
 async function awRegister(env: Env, email: string, password: string): Promise<any> {
-  const url = `${cfg(env, "APPWRITE_ENDPOINT")}/account`;
+  const url = `${APPWRITE_ENDPOINT}/account`;
+  console.log("awRegister URL:", url);
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -81,25 +99,23 @@ async function awRegister(env: Env, email: string, password: string): Promise<an
       name: email.split("@")[0],
     }),
   });
-  const text = await res.text();
-  let data: any;
-  try { data = JSON.parse(text); } catch (e) {
-    throw new Error(`Appwrite returned non-JSON (${res.status}): ${text.slice(0, 150)}`);
-  }
+  const data = await safeJson(res, "awRegister");
   if (!res.ok) throw new Error(data.message || "Register failed");
   return data;
 }
 
 async function awGetUserPoints(env: Env, userId: string): Promise<any | null> {
-  const url = `${cfg(env, "APPWRITE_ENDPOINT")}/databases/${cfg(env, "APPWRITE_DATABASE_ID")}/tables/${cfg(env, "APPWRITE_USER_POINTS_TABLE_ID")}/rows?queries[]=${encodeURIComponent(`equal("user_id", ["${userId}"])`)}&queries[]=${encodeURIComponent("limit(1)")}`;
+  const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows?queries[]=${encodeURIComponent(`equal("user_id", ["${userId}"])`)}&queries[]=${encodeURIComponent("limit(1)")}`;
+  console.log("awGetUserPoints URL:", url);
   const res = await fetch(url, { headers: awHeaders(env) });
-  const data: any = await res.json();
+  const data = await safeJson(res, "awGetUserPoints");
   if (!res.ok) return null;
   return data.rows && data.rows.length > 0 ? data.rows[0] : null;
 }
 
 async function awCreateUserPoints(env: Env, userId: string, chatId: number, invitedBy: string = ""): Promise<any> {
-  const url = `${cfg(env, "APPWRITE_ENDPOINT")}/databases/${cfg(env, "APPWRITE_DATABASE_ID")}/tables/${cfg(env, "APPWRITE_USER_POINTS_TABLE_ID")}/rows`;
+  const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows`;
+  console.log("awCreateUserPoints URL:", url);
   const res = await fetch(url, {
     method: "POST",
     headers: awHeaders(env),
@@ -115,39 +131,39 @@ async function awCreateUserPoints(env: Env, userId: string, chatId: number, invi
       },
     }),
   });
-  const data: any = await res.json();
+  const data = await safeJson(res, "awCreateUserPoints");
   if (!res.ok) throw new Error(data.message || "Create user failed");
   return data;
 }
 
 async function awUpdateUserPoints(env: Env, rowId: string, updates: any): Promise<any> {
-  const url = `${cfg(env, "APPWRITE_ENDPOINT")}/databases/${cfg(env, "APPWRITE_DATABASE_ID")}/tables/${cfg(env, "APPWRITE_USER_POINTS_TABLE_ID")}/rows/${rowId}`;
+  const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows/${rowId}`;
   const res = await fetch(url, {
     method: "PATCH",
     headers: awHeaders(env),
     body: JSON.stringify({ data: updates }),
   });
-  const data: any = await res.json();
+  const data = await safeJson(res, "awUpdateUserPoints");
   if (!res.ok) throw new Error(data.message || "Update failed");
   return data;
 }
 
 async function awGetPhotos(env: Env, userId: string, limit: number): Promise<any[]> {
-  const url = `${cfg(env, "APPWRITE_ENDPOINT")}/databases/${cfg(env, "APPWRITE_DATABASE_ID")}/tables/${cfg(env, "APPWRITE_PHOTO_TABLE_ID")}/rows?queries[]=${encodeURIComponent(`equal("user_id", ["${userId}"])`)}&queries[]=${encodeURIComponent(`limit(${limit})`)}`;
+  const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows?queries[]=${encodeURIComponent(`equal("user_id", ["${userId}"])`)}&queries[]=${encodeURIComponent(`limit(${limit})`)}`;
   const res = await fetch(url, { headers: awHeaders(env) });
-  const data: any = await res.json();
+  const data = await safeJson(res, "awGetPhotos");
   if (!res.ok) return [];
   return data.rows || [];
 }
 
 async function awDeletePhoto(env: Env, rowId: string, fileId: string): Promise<void> {
   try {
-    await fetch(`${cfg(env, "APPWRITE_ENDPOINT")}/databases/${cfg(env, "APPWRITE_DATABASE_ID")}/tables/${cfg(env, "APPWRITE_PHOTO_TABLE_ID")}/rows/${rowId}`, {
+    await fetch(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows/${rowId}`, {
       method: "DELETE", headers: awHeaders(env),
     });
   } catch (e) {}
   try {
-    await fetch(`${cfg(env, "APPWRITE_ENDPOINT")}/storage/buckets/${cfg(env, "APPWRITE_BUCKET_ID")}/files/${fileId}`, {
+    await fetch(`${APPWRITE_ENDPOINT}/storage/buckets/${APPWRITE_BUCKET_ID}/files/${fileId}`, {
       method: "DELETE", headers: awHeaders(env),
     });
   } catch (e) {}
@@ -155,7 +171,7 @@ async function awDeletePhoto(env: Env, rowId: string, fileId: string): Promise<v
 
 async function awGetPhotoBytes(env: Env, fileId: string): Promise<Uint8Array | null> {
   try {
-    const res = await fetch(`${cfg(env, "APPWRITE_ENDPOINT")}/storage/buckets/${cfg(env, "APPWRITE_BUCKET_ID")}/files/${fileId}/view`, {
+    const res = await fetch(`${APPWRITE_ENDPOINT}/storage/buckets/${APPWRITE_BUCKET_ID}/files/${fileId}/view`, {
       headers: {
         "X-Appwrite-Project": env.APPWRITE_PROJECT_ID,
         "X-Appwrite-Key": env.APPWRITE_API_KEY,
@@ -206,15 +222,13 @@ let botInstance: Bot | null = null;
 
 function getBot(env: Env): Bot {
   if (botInstance) return botInstance;
+  getConfig(env); // Log config
   botInstance = new Bot(env.BOT_TOKEN);
   setupBot(botInstance, env);
   return botInstance;
 }
 
 function setupBot(bot: Bot, env: Env) {
-  const channelId = cfg(env, "CHANNEL_ID");
-  const channelUsername = cfg(env, "CHANNEL_USERNAME");
-
   bot.command("start", async (ctx) => {
     const userId = ctx.from?.id;
     const name = ctx.from?.first_name || "သူငယ်ချင်း";
@@ -226,13 +240,13 @@ function setupBot(bot: Bot, env: Env) {
 
     let isJoined = false;
     try {
-      const member = await ctx.api.getChatMember(channelId, userId);
+      const member = await ctx.api.getChatMember(CHANNEL_ID, userId);
       isJoined = ["creator", "administrator", "member", "restricted"].includes(member.status);
     } catch (e) { isJoined = true; }
 
     if (!isJoined) {
       const kb = new InlineKeyboard()
-        .url("📢 Join ZhostTech", `https://t.me/${channelUsername.replace("@", "")}`)
+        .url("📢 Join ZhostTech", `https://t.me/${CHANNEL_USERNAME.replace("@", "")}`)
         .row().text("✅ Check", "check_join");
       await ctx.reply(
         `🌸 ဟယ်လို... ${name} ရေ 💕\n\nငါက 𝗭𝗵𝗼𝘀𝘁'𝘀 𝗧𝗲𝗰𝗵𝗻𝗼𝗹𝗼𝗴𝘆 𝗖𝗵𝗮𝗻𝗻𝗲𝗹 ရဲ့ Admin မမ 💕\n\nငါ့ Channel လေးကို Join ပေးပြီးမှ\nဒီ Bot လေးကို သုံးလို့ရမှာနော် 🌸\n\n👇 Join နှိပ်ပြီး "✅ Check" ကို နှိပ်လိုက်ပါ`,
@@ -265,7 +279,7 @@ function setupBot(bot: Bot, env: Env) {
 
     let isJoined = false;
     try {
-      const m = await ctx.api.getChatMember(channelId, userId);
+      const m = await ctx.api.getChatMember(CHANNEL_ID, userId);
       isJoined = ["creator", "administrator", "member", "restricted"].includes(m.status);
     } catch (e) {}
 
@@ -560,7 +574,7 @@ function setupBot(bot: Bot, env: Env) {
 
   bot.command("about", async (ctx) => {
     await ctx.reply(
-      `🌸 𝗔𝗯𝗼𝘂𝘁 𝗧𝗵𝗶𝘀 𝗕𝗼𝘁 💕\n\n━━━━━━━━━━━━━━━━\n👩‍💼 Owner: 𝗭𝗵𝗼𝘀𝘁'𝘀 𝗧𝗲𝗰𝗵𝗻𝗼𝗹𝗼𝗴𝘆 မမ\n🤖 Bot: Free Photo Backup Bot\n📅 Version: 1.0.0\n━━━━━━━━━━━━━━━━\n\n📢 Channel: https://t.me/${channelUsername.replace("@", "")}`
+      `🌸 𝗔𝗯𝗼𝘂𝘁 𝗧𝗵𝗶𝘀 𝗕𝗼𝘁 💕\n\n━━━━━━━━━━━━━━━━\n👩‍💼 Owner: 𝗭𝗵𝗼𝘀𝘁'𝘀 𝗧𝗲𝗰𝗵𝗻𝗼𝗹𝗼𝗴𝘆 မမ\n🤖 Bot: Free Photo Backup Bot\n📅 Version: 1.0.0\n━━━━━━━━━━━━━━━━\n\n📢 Channel: https://t.me/${CHANNEL_USERNAME.replace("@", "")}`
     );
   });
 }
