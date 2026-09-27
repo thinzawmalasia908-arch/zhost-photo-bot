@@ -2,21 +2,14 @@ import { Bot, webhookCallback, InlineKeyboard, InputFile } from "grammy";
 
 export interface Env {
   BOT_TOKEN: string;
-  APPWRITE_ENDPOINT: string;
   APPWRITE_PROJECT_ID: string;
   APPWRITE_API_KEY: string;
-  APPWRITE_DATABASE_ID: string;
-  APPWRITE_PHOTO_TABLE_ID: string;
-  APPWRITE_USER_POINTS_TABLE_ID: string;
-  APPWRITE_BUCKET_ID: string;
-  CHANNEL_ID: string;
-  CHANNEL_USERNAME: string;
-  APK_LINK: string;
   BOT_SESSIONS: KVNamespace;
+  [key: string]: any;
 }
 
 // ============================================
-// HARDCODED CONFIG — Env မရရင် ဒါတွေ သုံးမယ်
+// HARDCODED CONFIG
 // ============================================
 const APPWRITE_ENDPOINT = "https://fra.cloud.appwrite.io/v1";
 const APPWRITE_DATABASE_ID = "6ab8a2dd002493abffc1";
@@ -25,68 +18,83 @@ const APPWRITE_USER_POINTS_TABLE_ID = "user_points";
 const APPWRITE_BUCKET_ID = "6ab8a9a20014b126f169";
 const CHANNEL_ID = "@ZhostTech";
 const CHANNEL_USERNAME = "@ZhostTech";
-const APK_LINK = "https://t.me/ZhostTech/123";
 const DAILY_POINTS = 2;
 const INVITE_POINTS = 2;
 
-// Debug: Env ကို ပြ
-function getConfig(env: Env) {
-  const projectId = (env.APPWRITE_PROJECT_ID || "").trim();
-  const apiKey = (env.APPWRITE_API_KEY || "").trim();
-  console.log("=== CONFIG CHECK ===");
-  console.log("ENDPOINT:", APPWRITE_ENDPOINT);
-  console.log("PROJECT_ID:", projectId ? projectId.slice(0, 8) + "..." : "❌ EMPTY");
-  console.log("API_KEY:", apiKey ? apiKey.slice(0, 12) + "..." : "❌ EMPTY");
-  console.log("BOT_TOKEN:", env.BOT_TOKEN ? "✅ OK" : "❌ EMPTY");
-  console.log("KV:", env.BOT_SESSIONS ? "✅ OK" : "❌ EMPTY");
-  console.log("====================");
-  return { projectId, apiKey };
+// Safe fetch — Error ကို အတိအကျ ပြ
+async function safeFetch(url: string, options: RequestInit, label: string): Promise<any> {
+  console.log(`[${label}] URL: ${url}`);
+  
+  let res: Response;
+  try {
+    res = await fetch(url, options);
+  } catch (e: any) {
+    throw new Error(`❌ [${label}] Network Error: ${e?.message}\n🔗 URL: ${url}`);
+  }
+  
+  const text = await res.text();
+  console.log(`[${label}] Status: ${res.status}`);
+  console.log(`[${label}] Response preview: ${text.slice(0, 200)}`);
+  
+  // HTML ပြန်လာရင် (Appwrite မဟုတ်ဘဲ တခြားနေရာ ရောက်နေ)
+  if (text.trim().startsWith("<")) {
+    throw new Error(
+      `❌ [${label}] HTML ပြန်လာတယ် (status ${res.status})\n\n` +
+      `🔗 URL:\n${url}\n\n` +
+      `📄 Response Preview:\n${text.slice(0, 300)}\n\n` +
+      `💡 URL မှားနေတယ် ဒါမှမဟုတ် Auth မှားနေတယ်`
+    );
+  }
+  
+  // JSON parse
+  let data: any;
+  try {
+    data = JSON.parse(text);
+  } catch (e: any) {
+    throw new Error(
+      `❌ [${label}] Invalid JSON (status ${res.status})\n\n` +
+      `🔗 URL:\n${url}\n\n` +
+      `📄 Response:\n${text.slice(0, 300)}`
+    );
+  }
+  
+  // HTTP error
+  if (!res.ok) {
+    throw new Error(
+      `❌ [${label}] HTTP ${res.status}\n\n` +
+      `🔗 URL:\n${url}\n\n` +
+      `📄 Message: ${data.message || "Unknown"}\n` +
+      `📄 Type: ${data.type || "Unknown"}\n` +
+      `📄 Code: ${data.code || "Unknown"}`
+    );
+  }
+  
+  return data;
 }
 
 function awHeaders(env: Env) {
   return {
     "Content-Type": "application/json",
-    "X-Appwrite-Project": env.APPWRITE_PROJECT_ID,
-    "X-Appwrite-Key": env.APPWRITE_API_KEY,
+    "X-Appwrite-Project": env.APPWRITE_PROJECT_ID || "",
+    "X-Appwrite-Key": env.APPWRITE_API_KEY || "",
   };
 }
 
-// Safe JSON parser
-async function safeJson(res: Response, label: string): Promise<any> {
-  const text = await res.text();
-  if (!text || text.trim().startsWith("<")) {
-    throw new Error(`${label}: Server returned HTML (status ${res.status}). URL or Auth မှားနေတယ်။ Preview: ${text.slice(0, 100)}`);
-  }
-  try {
-    return JSON.parse(text);
-  } catch (e) {
-    throw new Error(`${label}: Invalid JSON (status ${res.status}). Preview: ${text.slice(0, 100)}`);
-  }
-}
-
-// ============================================
-// Appwrite API
-// ============================================
 async function awLogin(env: Env, email: string, password: string): Promise<any> {
   const url = `${APPWRITE_ENDPOINT}/account/sessions/email`;
-  console.log("awLogin URL:", url);
-  const res = await fetch(url, {
+  return await safeFetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Appwrite-Project": env.APPWRITE_PROJECT_ID,
     },
     body: JSON.stringify({ email, password }),
-  });
-  const data = await safeJson(res, "awLogin");
-  if (!res.ok) throw new Error(data.message || "Login failed");
-  return data;
+  }, "awLogin");
 }
 
 async function awRegister(env: Env, email: string, password: string): Promise<any> {
   const url = `${APPWRITE_ENDPOINT}/account`;
-  console.log("awRegister URL:", url);
-  const res = await fetch(url, {
+  return await safeFetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -98,25 +106,25 @@ async function awRegister(env: Env, email: string, password: string): Promise<an
       password,
       name: email.split("@")[0],
     }),
-  });
-  const data = await safeJson(res, "awRegister");
-  if (!res.ok) throw new Error(data.message || "Register failed");
-  return data;
+  }, "awRegister");
 }
 
 async function awGetUserPoints(env: Env, userId: string): Promise<any | null> {
-  const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows?queries[]=${encodeURIComponent(`equal("user_id", ["${userId}"])`)}&queries[]=${encodeURIComponent("limit(1)")}`;
-  console.log("awGetUserPoints URL:", url);
-  const res = await fetch(url, { headers: awHeaders(env) });
-  const data = await safeJson(res, "awGetUserPoints");
-  if (!res.ok) return null;
-  return data.rows && data.rows.length > 0 ? data.rows[0] : null;
+  const query = encodeURIComponent(`equal("user_id", ["${userId}"])`);
+  const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows?queries[]=${query}&queries[]=${encodeURIComponent("limit(1)")}`;
+  
+  const data = await safeFetch(url, {
+    method: "GET",
+    headers: awHeaders(env),
+  }, "awGetUserPoints");
+  
+  if (!data.rows || data.rows.length === 0) return null;
+  return data.rows[0];
 }
 
 async function awCreateUserPoints(env: Env, userId: string, chatId: number, invitedBy: string = ""): Promise<any> {
   const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows`;
-  console.log("awCreateUserPoints URL:", url);
-  const res = await fetch(url, {
+  return await safeFetch(url, {
     method: "POST",
     headers: awHeaders(env),
     body: JSON.stringify({
@@ -130,48 +138,44 @@ async function awCreateUserPoints(env: Env, userId: string, chatId: number, invi
         invited_by: invitedBy,
       },
     }),
-  });
-  const data = await safeJson(res, "awCreateUserPoints");
-  if (!res.ok) throw new Error(data.message || "Create user failed");
-  return data;
+  }, "awCreateUserPoints");
 }
 
 async function awUpdateUserPoints(env: Env, rowId: string, updates: any): Promise<any> {
   const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows/${rowId}`;
-  const res = await fetch(url, {
+  return await safeFetch(url, {
     method: "PATCH",
     headers: awHeaders(env),
     body: JSON.stringify({ data: updates }),
-  });
-  const data = await safeJson(res, "awUpdateUserPoints");
-  if (!res.ok) throw new Error(data.message || "Update failed");
-  return data;
+  }, "awUpdateUserPoints");
 }
 
 async function awGetPhotos(env: Env, userId: string, limit: number): Promise<any[]> {
   const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows?queries[]=${encodeURIComponent(`equal("user_id", ["${userId}"])`)}&queries[]=${encodeURIComponent(`limit(${limit})`)}`;
-  const res = await fetch(url, { headers: awHeaders(env) });
-  const data = await safeJson(res, "awGetPhotos");
-  if (!res.ok) return [];
-  return data.rows || [];
+  try {
+    const data = await safeFetch(url, { method: "GET", headers: awHeaders(env) }, "awGetPhotos");
+    return data.rows || [];
+  } catch (e) {
+    console.error("awGetPhotos error:", e);
+    return [];
+  }
 }
 
 async function awDeletePhoto(env: Env, rowId: string, fileId: string): Promise<void> {
   try {
-    await fetch(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows/${rowId}`, {
-      method: "DELETE", headers: awHeaders(env),
-    });
+    const url1 = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows/${rowId}`;
+    await fetch(url1, { method: "DELETE", headers: awHeaders(env) });
   } catch (e) {}
   try {
-    await fetch(`${APPWRITE_ENDPOINT}/storage/buckets/${APPWRITE_BUCKET_ID}/files/${fileId}`, {
-      method: "DELETE", headers: awHeaders(env),
-    });
+    const url2 = `${APPWRITE_ENDPOINT}/storage/buckets/${APPWRITE_BUCKET_ID}/files/${fileId}`;
+    await fetch(url2, { method: "DELETE", headers: awHeaders(env) });
   } catch (e) {}
 }
 
 async function awGetPhotoBytes(env: Env, fileId: string): Promise<Uint8Array | null> {
   try {
-    const res = await fetch(`${APPWRITE_ENDPOINT}/storage/buckets/${APPWRITE_BUCKET_ID}/files/${fileId}/view`, {
+    const url = `${APPWRITE_ENDPOINT}/storage/buckets/${APPWRITE_BUCKET_ID}/files/${fileId}/view`;
+    const res = await fetch(url, {
       headers: {
         "X-Appwrite-Project": env.APPWRITE_PROJECT_ID,
         "X-Appwrite-Key": env.APPWRITE_API_KEY,
@@ -222,7 +226,6 @@ let botInstance: Bot | null = null;
 
 function getBot(env: Env): Bot {
   if (botInstance) return botInstance;
-  getConfig(env); // Log config
   botInstance = new Bot(env.BOT_TOKEN);
   setupBot(botInstance, env);
   return botInstance;
@@ -362,13 +365,7 @@ function setupBot(bot: Bot, env: Env) {
       try {
         let user;
         if (action === "register") {
-          try {
-            user = await awRegister(env, email, password);
-          } catch (e: any) {
-            await ctx.reply(`🥺 Account ဖွင့်လို့ မရဘူးနော် 💔\n\n${e.message}\n\nLogin ဝင်ကြည့်ပါဦး 🌸`);
-            await clearState(env, userId);
-            return;
-          }
+          user = await awRegister(env, email, password);
         } else {
           user = await awLogin(env, email, password);
         }
@@ -401,7 +398,7 @@ function setupBot(bot: Bot, env: Env) {
           { reply_markup: getMainKeyboard() }
         );
       } catch (e: any) {
-        await ctx.reply(`🥺 Error: ${e.message}\n\nပြန်ကြိုးစားပါဦး 💔`);
+        await ctx.reply(`🥺 Error:\n\n${e.message}`);
         await clearState(env, userId);
       }
       return;
@@ -425,7 +422,7 @@ function setupBot(bot: Bot, env: Env) {
       await awUpdateUserPoints(env, up.$id, { points: np, last_daily: new Date().toISOString() });
       await ctx.reply(`💕 အိုး... ${ctx.from?.first_name || "ရတနာ"} လာပြီနော် 🌸\n\nဒီနေ့အတွက် Daily Bonus လေး ယူလိုက်ပါ 💫\n\n✨ +${DAILY_POINTS} Points ရသွားပြီ 💖\n💰 လက်ရှိ Points: ${np}`);
     } catch (e: any) {
-      await ctx.reply(`🥺 Error: ${e.message}`);
+      await ctx.reply(`🥺 Error:\n\n${e.message}`);
     }
   }
 
@@ -453,7 +450,7 @@ function setupBot(bot: Bot, env: Env) {
         { reply_markup: kb }
       );
     } catch (e: any) {
-      await ctx.reply(`🥺 Error: ${e.message}`);
+      await ctx.reply(`🥺 Error:\n\n${e.message}`);
     }
   }
 
@@ -532,7 +529,7 @@ function setupBot(bot: Bot, env: Env) {
         `💕 ${name} ရေ...\n\nမင်း သူငယ်ချင်းတွေကို ဖိတ်ခေါ်ချင်တာလား? 🥰\n\n👇 ဒီ Link ကို ကူးယူပြီး ပို့လိုက်ပါ\n\n🔗 ${link}\n\n✨ သူငယ်ချင်း တစ်ယောက် Join ရင် +${INVITE_POINTS} Points 💖\n\n👥 ခေါ်ခဲ့တဲ့ သူငယ်ချင်း: ${invites}\n💰 လက်ရှိ Points: ${points}`
       );
     } catch (e: any) {
-      await ctx.reply(`🥺 Error: ${e.message}`);
+      await ctx.reply(`🥺 Error:\n\n${e.message}`);
     }
   }
 
@@ -542,14 +539,12 @@ function setupBot(bot: Bot, env: Env) {
       const points = up?.points || 0;
       const invites = up?.total_invites || 0;
       const lastDaily = up?.last_daily ? new Date(up.last_daily).toLocaleDateString() : "မရှိ";
-      const photos = await awGetPhotos(env, session.userId, 1);
-      const photoCount = photos.length > 0 ? "ရှိ" : "မရှိ";
 
       await ctx.reply(
-        `🌸 မင်းရဲ့ Profile လေးကို ကြည့်လိုက်ရအောင် 💕\n\n━━━━━━━━━━━━━━━━\n👩‍💼 Admin: 𝗭𝗵𝗼𝘀𝘁'𝘀 𝗧𝗲𝗰𝗵𝗻𝗼𝗹𝗼𝗴𝘆 (မမ)\n📧 Email: ${session.email}\n━━━━━━━━━━━━━━━━\n💰 Points: ${points}\n👥 Invited: ${invites} ယောက်\n🖼️ Backup Photos: ${photoCount}\n📅 Last Daily: ${lastDaily}\n━━━━━━━━━━━━━━━━\n\n✨ တော်တော်လေး ရတနာရေ 💖`
+        `🌸 မင်းရဲ့ Profile လေးကို ကြည့်လိုက်ရအောင် 💕\n\n━━━━━━━━━━━━━━━━\n👩‍💼 Admin: 𝗭𝗵𝗼𝘀𝘁'𝘀 𝗧𝗲𝗰𝗵𝗻𝗼𝗹𝗼𝗴𝘆 (မမ)\n📧 Email: ${session.email}\n━━━━━━━━━━━━━━━━\n💰 Points: ${points}\n👥 Invited: ${invites} ယောက်\n📅 Last Daily: ${lastDaily}\n━━━━━━━━━━━━━━━━\n\n✨ တော်တော်လေး ရတနာရေ 💖`
       );
     } catch (e: any) {
-      await ctx.reply(`🥺 Error: ${e.message}`);
+      await ctx.reply(`🥺 Error:\n\n${e.message}`);
     }
   }
 
@@ -570,6 +565,38 @@ function setupBot(bot: Bot, env: Env) {
   bot.callbackQuery("cancel_logout", async (ctx) => {
     await ctx.answerCallbackQuery({ text: "💕 ကောင်းလိုက်တာ" });
     await ctx.editMessageText(MAIN_MENU_TEXT);
+  });
+
+  // ============ /debug Command — Config စစ်ဆေးဖို့ ============
+  bot.command("debug", async (ctx) => {
+    const projectId = env.APPWRITE_PROJECT_ID || "❌ EMPTY";
+    const apiKey = env.APPWRITE_API_KEY || "❌ EMPTY";
+    const botToken = env.BOT_TOKEN || "❌ EMPTY";
+    const kv = env.BOT_SESSIONS ? "✅ OK" : "❌ EMPTY";
+    
+    let apiTestResult = "";
+    try {
+      const testUrl = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_USER_POINTS_TABLE_ID}/rows?queries[]=${encodeURIComponent("limit(1)")}`;
+      const res = await fetch(testUrl, { headers: awHeaders(env) });
+      const text = await res.text();
+      apiTestResult = `\n\n🧪 API Test:\n• Status: ${res.status}\n• Response: ${text.slice(0, 200)}`;
+    } catch (e: any) {
+      apiTestResult = `\n\n🧪 API Test:\n• Error: ${e.message}`;
+    }
+    
+    await ctx.reply(
+      `🔧 𝗗𝗘𝗕𝗨𝗚 𝗜𝗡𝗙𝗢\n\n` +
+      `📍 ENDPOINT:\n${APPWRITE_ENDPOINT}\n\n` +
+      `📁 DATABASE_ID:\n${APPWRITE_DATABASE_ID}\n\n` +
+      `📋 USER_POINTS_TABLE_ID:\n${APPWRITE_USER_POINTS_TABLE_ID}\n\n` +
+      `📸 PHOTO_TABLE_ID:\n${APPWRITE_PHOTO_TABLE_ID}\n\n` +
+      `━━━━━━━━━━━━━━━━\n` +
+      `🔑 PROJECT_ID:\n${projectId.slice(0, 12)}...\n\n` +
+      `🔐 API_KEY:\n${apiKey.slice(0, 20)}...\n\n` +
+      `🤖 BOT_TOKEN:\n${botToken ? "✅ OK" : "❌ EMPTY"}\n\n` +
+      `💾 KV:\n${kv}` +
+      apiTestResult
+    );
   });
 
   bot.command("about", async (ctx) => {
