@@ -24,19 +24,25 @@ export interface Env {
 // ============================================
 // APPWRITE API HELPERS
 // ============================================
-function awHeaders() {
-  return {
-    "Content-Type": "application/json",
-    "X-Appwrite-Project": APPWRITE_PROJECT_ID,
-    "X-Appwrite-Key": APPWRITE_API_KEY,
-  };
+function awHeaders(): Headers {
+  const headers = new Headers();
+  headers.set("Content-Type", "application/json");
+  headers.set("X-Appwrite-Project", APPWRITE_PROJECT_ID);
+  headers.set("X-Appwrite-Key", APPWRITE_API_KEY.trim());
+  return headers;
 }
 
 async function awFetch(path: string, options: RequestInit = {}): Promise<any> {
   const url = `${APPWRITE_ENDPOINT}${path}`;
+  const fetchHeaders = awHeaders();
+  
+  if (options.headers) {
+    new Headers(options.headers).forEach((value, key) => fetchHeaders.set(key, value));
+  }
+
   const res = await fetch(url, {
     ...options,
-    headers: { ...awHeaders(), ...(options.headers || {}) }
+    headers: fetchHeaders
   });
   const text = await res.text();
   
@@ -139,7 +145,11 @@ async function awDeletePhoto(documentId: string, fileId: string): Promise<void> 
 async function awGetPhotoBytes(fileId: string): Promise<Uint8Array | null> {
   try {
     const url = `${APPWRITE_ENDPOINT}/storage/buckets/${APPWRITE_BUCKET_ID}/files/${fileId}/view`;
-    const res = await fetch(url, { headers: { "X-Appwrite-Project": APPWRITE_PROJECT_ID, "X-Appwrite-Key": APPWRITE_API_KEY } });
+    const headers = new Headers();
+    headers.set("X-Appwrite-Project", APPWRITE_PROJECT_ID);
+    headers.set("X-Appwrite-Key", APPWRITE_API_KEY.trim());
+    
+    const res = await fetch(url, { headers });
     if (!res.ok) return null;
     return new Uint8Array(await res.arrayBuffer());
   } catch (e) { return null; }
@@ -424,7 +434,8 @@ function setupBot(bot: Bot, env: Env) {
     let testResult = "";
     try {
       const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents?queries[]=limit(1)`;
-      const res = await fetch(url, { headers: awHeaders() });
+      const headers = awHeaders();
+      const res = await fetch(url, { headers });
       const text = await res.text();
       testResult += `\n• DocumentsDB: ${res.status}\n• Preview: ${text.slice(0, 150)}`;
     } catch (e: any) { testResult = `\n• Error: ${e.message}`; }
