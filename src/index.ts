@@ -9,8 +9,8 @@ const APPWRITE_ENDPOINT = "https://fra.cloud.appwrite.io/v1";
 const APPWRITE_PROJECT_ID = "6ab8a17c0009e545239a";
 const APPWRITE_DATABASE_ID = "6ab8a2dd002493abffc1";
 const APPWRITE_PHOTO_TABLE_ID = "6ab8a3170023949dc624";
-// Fixed: Using the actual Appwrite table ID instead of the plain text name "user_points"
-const APPWRITE_USER_POINTS_TABLE_ID = "6ab8a2ef0033fa0f19ff";
+// FIX: Appwrite Console မှ user_points table ၏ တကယ့် ID အမှန်ကို ဤနေရာတွင် ထည့်ပါ (ဥပမာ '6ab8a...')
+const APPWRITE_USER_POINTS_TABLE_ID = "user_points"; 
 const APPWRITE_BUCKET_ID = "6ab8a9a20014b126f169";
 const CHANNEL_ID = "@ZhostTech";
 const CHANNEL_USERNAME = "@ZhostTech";
