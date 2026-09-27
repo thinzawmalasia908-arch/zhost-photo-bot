@@ -3,20 +3,17 @@ main = "src/index.ts"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Cloudflare KV (Session သိမ်းဖို့)
-[[kv_namespaces]]
-binding = "BOT_SESSIONS"
-id = "PLACEHOLDER_KV_ID"
-
-# ⚠️ Secrets တွေကို wrangler secret put နဲ့ ထည့်ရမယ်
-# BOT_TOKEN
-# APPWRITE_ENDPOINT
-# APPWRITE_PROJECT_ID
-# APPWRITE_API_KEY
-# APPWRITE_DATABASE_ID
-# APPWRITE_USER_TABLE_ID
-# APPWRITE_PHOTO_TABLE_ID
-# APPWRITE_BUCKET_ID
-# CHANNEL_ID
-# CHANNEL_USERNAME
-# APK_LINK
+# ⚠️ Secrets တွေကို Cloudflare Dashboard -> Settings -> Variables and Secrets မှာ ထည့်ရမယ်
+# အောက်ပါတွေကို ထည့်ထားပြီးသား ဖြစ်ရပါမယ် -
+#
+# BOT_TOKEN                (🔒 Secret)
+# APPWRITE_ENDPOINT        (Text)
+# APPWRITE_PROJECT_ID      (Text)
+# APPWRITE_API_KEY         (🔒 Secret)
+# APPWRITE_DATABASE_ID     (Text)
+# APPWRITE_USER_TABLE_ID   (Text)
+# APPWRITE_PHOTO_TABLE_ID  (Text)
+# APPWRITE_BUCKET_ID       (Text)
+# CHANNEL_ID               (Text)
+# CHANNEL_USERNAME         (Text)
+# APK_LINK                 (Text)
