@@ -9,7 +9,6 @@ const APPWRITE_ENDPOINT = "https://fra.cloud.appwrite.io/v1";
 const APPWRITE_PROJECT_ID = "6ab8a17c0009e545239a";
 const APPWRITE_DATABASE_ID = "6ab8a2dd002493abffc1";
 const APPWRITE_PHOTO_TABLE_ID = "6ab8a3170023949dc624";
-// FIX: Appwrite Console မှ user_points table ၏ တကယ့် ID အမှန်ကို ဤနေရာတွင် ထည့်ပါ (ဥပမာ '6ab8a...')
 const APPWRITE_USER_POINTS_TABLE_ID = "user_points"; 
 const APPWRITE_BUCKET_ID = "6ab8a9a20014b126f169";
 const CHANNEL_ID = "@ZhostTech";
@@ -89,8 +88,8 @@ async function awRegister(email: string, password: string): Promise<any> {
 }
 
 async function awGetUserPoints(userId: string): Promise<any | null> {
-  const q = encodeURIComponent(`equal("user_id", "${userId}")`);
-  const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents?queries[]=${q}&queries[]=limit(1)`;
+  const q = JSON.stringify(['equal("user_id", ["' + userId + '"])']);
+  const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents?queries[]=${encodeURIComponent('equal("user_id", ["' + userId + '"])')}&queries[]=${encodeURIComponent('limit(1)')}`;
   try {
     const data = await awFetch(path, { method: "GET" });
     return data.documents && data.documents.length > 0 ? data.documents[0] : null;
@@ -122,8 +121,7 @@ async function awUpdateUserPoints(documentId: string, updates: any): Promise<any
 }
 
 async function awGetPhotos(userId: string, limit: number): Promise<any[]> {
-  const q = encodeURIComponent(`equal("user_id", "${userId}")`);
-  const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents?queries[]=${q}&queries[]=limit(${limit})`;
+  const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents?queries[]=${encodeURIComponent('equal("user_id", ["' + userId + '"])')}&queries[]=${encodeURIComponent('limit(' + limit + ')')}`;
   try {
     const data = await awFetch(path, { method: "GET" });
     return data.documents || [];
@@ -229,7 +227,7 @@ function setupBot(bot: Bot, env: Env) {
   bot.command("debug", async (ctx) => {
     let testResult = "";
     try {
-      const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents?queries[]=limit(1)`;
+      const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents?queries[]=${encodeURIComponent('limit(1)')}`;
       const headers = awHeaders();
       const res = await fetch(url, { headers });
       const text = await res.text();
