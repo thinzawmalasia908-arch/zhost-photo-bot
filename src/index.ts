@@ -22,8 +22,9 @@ export interface Env {
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    // Health Check
     const url = new URL(request.url);
+
+    // Health Check
     if (url.pathname === "/") {
       return new Response("🌸 Zhost Photo Bot is running! 💕", {
         status: 200,
@@ -60,7 +61,7 @@ export default {
       });
 
       // Webhook Handler
-      return webhookCallback(bot, "cloudflare-mod")(request);
+      return webhookCallback(bot, "cloudflare")(request);
     }
 
     // 404 for other paths
