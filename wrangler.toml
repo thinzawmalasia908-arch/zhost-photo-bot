@@ -1,0 +1,22 @@
+name = "zhost-photo-bot"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare KV (Session သိမ်းဖို့)
+[[kv_namespaces]]
+binding = "BOT_SESSIONS"
+id = "PLACEHOLDER_KV_ID"
+
+# ⚠️ Secrets တွေကို wrangler secret put နဲ့ ထည့်ရမယ်
+# BOT_TOKEN
+# APPWRITE_ENDPOINT
+# APPWRITE_PROJECT_ID
+# APPWRITE_API_KEY
+# APPWRITE_DATABASE_ID
+# APPWRITE_USER_TABLE_ID
+# APPWRITE_PHOTO_TABLE_ID
+# APPWRITE_BUCKET_ID
+# CHANNEL_ID
+# CHANNEL_USERNAME
+# APK_LINK
