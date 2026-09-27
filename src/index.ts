@@ -1,6 +1,6 @@
 import { Bot, webhookCallback, InlineKeyboard, InputFile } from "grammy";
 
-// ==========================================
+// ===========================================
 // HARDCODED CREDENTIALS
 // ===========================================
 const BOT_TOKEN = "8947544923:AAG4Wrh70eqP4ybIfpsiPjWDriLXeMNgrw8";
@@ -87,13 +87,22 @@ async function awRegister(email: string, password: string): Promise<any> {
   return data;
 }
 
+// ============================================
+// FIXED: Use JSON array format for queries
+// ============================================
 async function awGetUserPoints(userId: string): Promise<any | null> {
-  const q = JSON.stringify(['equal("user_id", ["' + userId + '"])']);
-  const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents?queries[]=${encodeURIComponent('equal("user_id", ["' + userId + '"])')}&queries[]=${encodeURIComponent('limit(1)')}`;
+  const queries = JSON.stringify([
+    `equal("user_id", "${userId}")`,
+    "limit(1)"
+  ]);
+  const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents?queries=${encodeURIComponent(queries)}`;
   try {
     const data = await awFetch(path, { method: "GET" });
     return data.documents && data.documents.length > 0 ? data.documents[0] : null;
-  } catch (e) { return null; }
+  } catch (e: any) {
+    console.log("awGetUserPoints error:", e.message);
+    return null;
+  }
 }
 
 async function awCreateUserPoints(userId: string, chatId: number, invitedBy: string = ""): Promise<any> {
@@ -120,12 +129,22 @@ async function awUpdateUserPoints(documentId: string, updates: any): Promise<any
   });
 }
 
+// ============================================
+// FIXED: Use JSON array format for queries
+// ============================================
 async function awGetPhotos(userId: string, limit: number): Promise<any[]> {
-  const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents?queries[]=${encodeURIComponent('equal("user_id", ["' + userId + '"])')}&queries[]=${encodeURIComponent('limit(' + limit + ')')}`;
+  const queries = JSON.stringify([
+    `equal("user_id", "${userId}")`,
+    `limit(${limit})`
+  ]);
+  const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents?queries=${encodeURIComponent(queries)}`;
   try {
     const data = await awFetch(path, { method: "GET" });
     return data.documents || [];
-  } catch (e) { return []; }
+  } catch (e: any) {
+    console.log("awGetPhotos error:", e.message);
+    return [];
+  }
 }
 
 async function awDeletePhoto(documentId: string, fileId: string): Promise<void> {
@@ -227,11 +246,12 @@ function setupBot(bot: Bot, env: Env) {
   bot.command("debug", async (ctx) => {
     let testResult = "";
     try {
-      const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents?queries[]=${encodeURIComponent('limit(1)')}`;
+      const queries = JSON.stringify(["limit(1)"]);
+      const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents?queries=${encodeURIComponent(queries)}`;
       const headers = awHeaders();
       const res = await fetch(url, { headers });
       const text = await res.text();
-      testResult += `\n• DocumentsDB: ${res.status}\n• Preview: ${text.slice(0, 150)}`;
+      testResult += `\n• DocumentsDB: ${res.status}\n• Preview: ${text.slice(0, 200)}`;
     } catch (e: any) { testResult = `\n• Error: ${e.message}`; }
     await ctx.reply(`🔧 DEBUG\n\n📍 ${APPWRITE_ENDPOINT}\n🔑 ${APPWRITE_PROJECT_ID}\n🔐 API KEY: OK\n📁 ${APPWRITE_DATABASE_ID}\n📋 ${APPWRITE_USER_POINTS_TABLE_ID}\n📸 ${APPWRITE_PHOTO_TABLE_ID}${testResult}`);
   });
