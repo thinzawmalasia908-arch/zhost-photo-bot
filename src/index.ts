@@ -15,10 +15,29 @@ export interface Env {
   BOT_SESSIONS: KVNamespace;
 }
 
-const FALLBACK_CHANNEL_ID = "@ZhostTech";
-const FALLBACK_CHANNEL_USERNAME = "@ZhostTech";
+// ============================================
+// Fallbacks (Env မရရင် ဒါတွေ သုံးမယ်)
+// ⚠️ APPWRITE_PROJECT_ID နဲ့ APPWRITE_API_KEY ကို Env ကနေပဲ ဖတ်မယ်
+// ============================================
+const FB = {
+  APPWRITE_ENDPOINT: "https://cloud.appwrite.io/v1",
+  APPWRITE_DATABASE_ID: "6ab8a2dd002493abffc1",
+  APPWRITE_PHOTO_TABLE_ID: "6ab8a3170023949dc624",
+  APPWRITE_USER_POINTS_TABLE_ID: "user_points",
+  APPWRITE_BUCKET_ID: "6ab8a9a20014b126f169",
+  CHANNEL_ID: "@ZhostTech",
+  CHANNEL_USERNAME: "@ZhostTech",
+  APK_LINK: "https://t.me/ZhostTech/123",
+};
+
 const DAILY_POINTS = 2;
 const INVITE_POINTS = 2;
+
+function cfg(env: Env, key: keyof typeof FB): string {
+  const envVal = (env as any)[key];
+  if (envVal && typeof envVal === "string" && envVal.trim()) return envVal;
+  return FB[key];
+}
 
 function awHeaders(env: Env) {
   return {
@@ -29,7 +48,8 @@ function awHeaders(env: Env) {
 }
 
 async function awLogin(env: Env, email: string, password: string): Promise<any> {
-  const res = await fetch(`${env.APPWRITE_ENDPOINT}/account/sessions/email`, {
+  const url = `${cfg(env, "APPWRITE_ENDPOINT")}/account/sessions/email`;
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -37,13 +57,18 @@ async function awLogin(env: Env, email: string, password: string): Promise<any> 
     },
     body: JSON.stringify({ email, password }),
   });
-  const data: any = await res.json();
+  const text = await res.text();
+  let data: any;
+  try { data = JSON.parse(text); } catch (e) {
+    throw new Error(`Appwrite returned non-JSON (${res.status}): ${text.slice(0, 150)}`);
+  }
   if (!res.ok) throw new Error(data.message || "Login failed");
   return data;
 }
 
 async function awRegister(env: Env, email: string, password: string): Promise<any> {
-  const res = await fetch(`${env.APPWRITE_ENDPOINT}/account`, {
+  const url = `${cfg(env, "APPWRITE_ENDPOINT")}/account`;
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -56,13 +81,17 @@ async function awRegister(env: Env, email: string, password: string): Promise<an
       name: email.split("@")[0],
     }),
   });
-  const data: any = await res.json();
+  const text = await res.text();
+  let data: any;
+  try { data = JSON.parse(text); } catch (e) {
+    throw new Error(`Appwrite returned non-JSON (${res.status}): ${text.slice(0, 150)}`);
+  }
   if (!res.ok) throw new Error(data.message || "Register failed");
   return data;
 }
 
 async function awGetUserPoints(env: Env, userId: string): Promise<any | null> {
-  const url = `${env.APPWRITE_ENDPOINT}/databases/${env.APPWRITE_DATABASE_ID}/tables/${env.APPWRITE_USER_POINTS_TABLE_ID}/rows?queries[]=${encodeURIComponent(`equal("user_id", ["${userId}"])`)}&queries[]=${encodeURIComponent("limit(1)")}`;
+  const url = `${cfg(env, "APPWRITE_ENDPOINT")}/databases/${cfg(env, "APPWRITE_DATABASE_ID")}/tables/${cfg(env, "APPWRITE_USER_POINTS_TABLE_ID")}/rows?queries[]=${encodeURIComponent(`equal("user_id", ["${userId}"])`)}&queries[]=${encodeURIComponent("limit(1)")}`;
   const res = await fetch(url, { headers: awHeaders(env) });
   const data: any = await res.json();
   if (!res.ok) return null;
@@ -70,7 +99,8 @@ async function awGetUserPoints(env: Env, userId: string): Promise<any | null> {
 }
 
 async function awCreateUserPoints(env: Env, userId: string, chatId: number, invitedBy: string = ""): Promise<any> {
-  const res = await fetch(`${env.APPWRITE_ENDPOINT}/databases/${env.APPWRITE_DATABASE_ID}/tables/${env.APPWRITE_USER_POINTS_TABLE_ID}/rows`, {
+  const url = `${cfg(env, "APPWRITE_ENDPOINT")}/databases/${cfg(env, "APPWRITE_DATABASE_ID")}/tables/${cfg(env, "APPWRITE_USER_POINTS_TABLE_ID")}/rows`;
+  const res = await fetch(url, {
     method: "POST",
     headers: awHeaders(env),
     body: JSON.stringify({
@@ -91,7 +121,8 @@ async function awCreateUserPoints(env: Env, userId: string, chatId: number, invi
 }
 
 async function awUpdateUserPoints(env: Env, rowId: string, updates: any): Promise<any> {
-  const res = await fetch(`${env.APPWRITE_ENDPOINT}/databases/${env.APPWRITE_DATABASE_ID}/tables/${env.APPWRITE_USER_POINTS_TABLE_ID}/rows/${rowId}`, {
+  const url = `${cfg(env, "APPWRITE_ENDPOINT")}/databases/${cfg(env, "APPWRITE_DATABASE_ID")}/tables/${cfg(env, "APPWRITE_USER_POINTS_TABLE_ID")}/rows/${rowId}`;
+  const res = await fetch(url, {
     method: "PATCH",
     headers: awHeaders(env),
     body: JSON.stringify({ data: updates }),
@@ -102,7 +133,7 @@ async function awUpdateUserPoints(env: Env, rowId: string, updates: any): Promis
 }
 
 async function awGetPhotos(env: Env, userId: string, limit: number): Promise<any[]> {
-  const url = `${env.APPWRITE_ENDPOINT}/databases/${env.APPWRITE_DATABASE_ID}/tables/${env.APPWRITE_PHOTO_TABLE_ID}/rows?queries[]=${encodeURIComponent(`equal("user_id", ["${userId}"])`)}&queries[]=${encodeURIComponent(`limit(${limit})`)}`;
+  const url = `${cfg(env, "APPWRITE_ENDPOINT")}/databases/${cfg(env, "APPWRITE_DATABASE_ID")}/tables/${cfg(env, "APPWRITE_PHOTO_TABLE_ID")}/rows?queries[]=${encodeURIComponent(`equal("user_id", ["${userId}"])`)}&queries[]=${encodeURIComponent(`limit(${limit})`)}`;
   const res = await fetch(url, { headers: awHeaders(env) });
   const data: any = await res.json();
   if (!res.ok) return [];
@@ -111,22 +142,20 @@ async function awGetPhotos(env: Env, userId: string, limit: number): Promise<any
 
 async function awDeletePhoto(env: Env, rowId: string, fileId: string): Promise<void> {
   try {
-    await fetch(`${env.APPWRITE_ENDPOINT}/databases/${env.APPWRITE_DATABASE_ID}/tables/${env.APPWRITE_PHOTO_TABLE_ID}/rows/${rowId}`, {
-      method: "DELETE",
-      headers: awHeaders(env),
+    await fetch(`${cfg(env, "APPWRITE_ENDPOINT")}/databases/${cfg(env, "APPWRITE_DATABASE_ID")}/tables/${cfg(env, "APPWRITE_PHOTO_TABLE_ID")}/rows/${rowId}`, {
+      method: "DELETE", headers: awHeaders(env),
     });
   } catch (e) {}
   try {
-    await fetch(`${env.APPWRITE_ENDPOINT}/storage/buckets/${env.APPWRITE_BUCKET_ID}/files/${fileId}`, {
-      method: "DELETE",
-      headers: awHeaders(env),
+    await fetch(`${cfg(env, "APPWRITE_ENDPOINT")}/storage/buckets/${cfg(env, "APPWRITE_BUCKET_ID")}/files/${fileId}`, {
+      method: "DELETE", headers: awHeaders(env),
     });
   } catch (e) {}
 }
 
 async function awGetPhotoBytes(env: Env, fileId: string): Promise<Uint8Array | null> {
   try {
-    const res = await fetch(`${env.APPWRITE_ENDPOINT}/storage/buckets/${env.APPWRITE_BUCKET_ID}/files/${fileId}/view`, {
+    const res = await fetch(`${cfg(env, "APPWRITE_ENDPOINT")}/storage/buckets/${cfg(env, "APPWRITE_BUCKET_ID")}/files/${fileId}/view`, {
       headers: {
         "X-Appwrite-Project": env.APPWRITE_PROJECT_ID,
         "X-Appwrite-Key": env.APPWRITE_API_KEY,
@@ -134,11 +163,12 @@ async function awGetPhotoBytes(env: Env, fileId: string): Promise<Uint8Array | n
     });
     if (!res.ok) return null;
     return new Uint8Array(await res.arrayBuffer());
-  } catch (e) {
-    return null;
-  }
+  } catch (e) { return null; }
 }
 
+// ============================================
+// Session & State
+// ============================================
 async function setSession(env: Env, chatId: number, data: any): Promise<void> {
   try { await env.BOT_SESSIONS.put(`session:${chatId}`, JSON.stringify(data), { expirationTtl: 3600 }); } catch (e) {}
 }
@@ -182,10 +212,9 @@ function getBot(env: Env): Bot {
 }
 
 function setupBot(bot: Bot, env: Env) {
-  const channelId = (env.CHANNEL_ID || "").trim() || FALLBACK_CHANNEL_ID;
-  const channelUsername = (env.CHANNEL_USERNAME || "").trim() || FALLBACK_CHANNEL_USERNAME;
+  const channelId = cfg(env, "CHANNEL_ID");
+  const channelUsername = cfg(env, "CHANNEL_USERNAME");
 
-  // ============ /start ============
   bot.command("start", async (ctx) => {
     const userId = ctx.from?.id;
     const name = ctx.from?.first_name || "သူငယ်ချင်း";
@@ -206,10 +235,7 @@ function setupBot(bot: Bot, env: Env) {
         .url("📢 Join ZhostTech", `https://t.me/${channelUsername.replace("@", "")}`)
         .row().text("✅ Check", "check_join");
       await ctx.reply(
-        `🌸 ဟယ်လို... ${name} ရေ 💕\n\n` +
-          `ငါက 𝗭𝗵𝗼𝘀𝘁'𝘀 𝗧𝗲𝗰𝗵𝗻𝗼𝗹𝗼𝗴𝘆 𝗖𝗵𝗮𝗻𝗻𝗲𝗹 ရဲ့ Admin မမ 💕\n\n` +
-          `ငါ့ Channel လေးကို Join ပေးပြီးမှ\nဒီ Bot လေးကို သုံးလို့ရမှာနော် 🌸\n\n` +
-          `👇 Join နှိပ်ပြီး "✅ Check" ကို နှိပ်လိုက်ပါ`,
+        `🌸 ဟယ်လို... ${name} ရေ 💕\n\nငါက 𝗭𝗵𝗼𝘀𝘁'𝘀 𝗧𝗲𝗰𝗵𝗻𝗼𝗹𝗼𝗴𝘆 𝗖𝗵𝗮𝗻𝗻𝗲𝗹 ရဲ့ Admin မမ 💕\n\nငါ့ Channel လေးကို Join ပေးပြီးမှ\nဒီ Bot လေးကို သုံးလို့ရမှာနော် 🌸\n\n👇 Join နှိပ်ပြီး "✅ Check" ကို နှိပ်လိုက်ပါ`,
         { reply_markup: kb }
       );
       return;
@@ -227,14 +253,11 @@ function setupBot(bot: Bot, env: Env) {
 
     const kb = new InlineKeyboard().text("🔐 Login", "do_login").text("📝 Create Account", "do_register");
     await ctx.reply(
-      `🌸 ဟယ်လို... ${name} ရေ 💕\n\n` +
-        `ဒီ Bot လေးကို သုံးဖို့ App မှာ ဖွင့်ထားတဲ့ Account လိုတယ်နော် 🌸\n\n` +
-        `Login ဝင်မလား? Account အသစ် ဖွင့်မလား?`,
+      `🌸 ဟယ်လို... ${name} ရေ 💕\n\nဒီ Bot လေးကို သုံးဖို့ App မှာ ဖွင့်ထားတဲ့ Account လိုတယ်နော် 🌸\n\nLogin ဝင်မလား? Account အသစ် ဖွင့်မလား?`,
       { reply_markup: kb }
     );
   });
 
-  // ============ Check Join ============
   bot.callbackQuery("check_join", async (ctx) => {
     const userId = ctx.from?.id;
     const name = ctx.from?.first_name || "သူငယ်ချင်း";
@@ -267,7 +290,6 @@ function setupBot(bot: Bot, env: Env) {
     );
   });
 
-  // ============ Login / Register ============
   bot.callbackQuery("do_login", async (ctx) => {
     const userId = ctx.from?.id;
     if (!userId) return;
@@ -284,7 +306,6 @@ function setupBot(bot: Bot, env: Env) {
     await ctx.editMessageText(`📝 Account အသစ် ဖွင့်မယ်နော် 💕\n\n📧 Gmail လေးကို ပို့ပေးပါဦး 🌸`);
   });
 
-  // ============ Text Handler ============
   bot.on("message:text", async (ctx) => {
     const userId = ctx.from?.id;
     const text = ctx.message.text.trim();
@@ -373,7 +394,6 @@ function setupBot(bot: Bot, env: Env) {
     }
   });
 
-  // ============ Daily ============
   async function handleDaily(ctx: any, env: Env, session: any) {
     try {
       let up = await awGetUserPoints(env, session.userId);
@@ -383,23 +403,18 @@ function setupBot(bot: Bot, env: Env) {
       const lastDaily = (up.last_daily || "").split("T")[0];
 
       if (lastDaily === today) {
-        await ctx.reply(
-          `🥺 ရတနာရေ... ဒီနေ့အတွက် ရယူပြီးသားလေ 💔\n\nမနက်ဖန် ပြန်လာခဲ့ပါဦးနော် 💕\n\n💰 လက်ရှိ Points: ${up.points || 0}`
-        );
+        await ctx.reply(`🥺 ရတနာရေ... ဒီနေ့အတွက် ရယူပြီးသားလေ 💔\n\nမနက်ဖန် ပြန်လာခဲ့ပါဦးနော် 💕\n\n💰 လက်ရှိ Points: ${up.points || 0}`);
         return;
       }
 
       const np = (up.points || 0) + DAILY_POINTS;
       await awUpdateUserPoints(env, up.$id, { points: np, last_daily: new Date().toISOString() });
-      await ctx.reply(
-        `💕 အိုး... ${ctx.from?.first_name || "ရတနာ"} လာပြီနော် 🌸\n\nဒီနေ့အတွက် Daily Bonus လေး ယူလိုက်ပါ 💫\n\n✨ +${DAILY_POINTS} Points ရသွားပြီ 💖\n💰 လက်ရှိ Points: ${np}`
-      );
+      await ctx.reply(`💕 အိုး... ${ctx.from?.first_name || "ရတနာ"} လာပြီနော် 🌸\n\nဒီနေ့အတွက် Daily Bonus လေး ယူလိုက်ပါ 💫\n\n✨ +${DAILY_POINTS} Points ရသွားပြီ 💖\n💰 လက်ရှိ Points: ${np}`);
     } catch (e: any) {
       await ctx.reply(`🥺 Error: ${e.message}`);
     }
   }
 
-  // ============ Show Photo Menu ============
   async function handleShowPhotoMenu(ctx: any, env: Env, session: any) {
     try {
       const up = await awGetUserPoints(env, session.userId);
@@ -408,8 +423,7 @@ function setupBot(bot: Bot, env: Env) {
       if (points < 1) {
         const kb = new InlineKeyboard().text("📅 Daily ယူမယ်", "go_daily").text("👥 Invite ခေါ်မယ်", "go_invite");
         await ctx.reply(
-          `🥺 ရတနာရေ... မင်းမှာ Points မရှိသေးဘူးနော် 💔\n\n` +
-            `💫 Daily နှိပ်ရင် ${DAILY_POINTS} Points ရမယ်\n💫 Invite ခေါ်ရင် တစ်ယောက်ကို ${INVITE_POINTS} Points ရမယ်\n\nကဲ... စုလိုက်ရအောင် 🌸`,
+          `🥺 ရတနာရေ... မင်းမှာ Points မရှိသေးဘူးနော် 💔\n\n💫 Daily နှိပ်ရင် ${DAILY_POINTS} Points ရမယ်\n💫 Invite ခေါ်ရင် တစ်ယောက်ကို ${INVITE_POINTS} Points ရမယ်\n\nကဲ... စုလိုက်ရအောင် 🌸`,
           { reply_markup: kb }
         );
         return;
@@ -429,7 +443,6 @@ function setupBot(bot: Bot, env: Env) {
     }
   }
 
-  // ============ Show Photo Callbacks ============
   for (let n = 1; n <= 5; n++) {
     bot.callbackQuery(`sp_${n}`, async (ctx) => {
       const userId = ctx.from?.id;
@@ -447,9 +460,7 @@ function setupBot(bot: Bot, env: Env) {
       const points = up?.points || 0;
 
       if (points < cost) {
-        await ctx.editMessageText(
-          `🥺 Points မလုံလောက်ဘူးနော် 💔\n\nလိုအပ်: ${cost} Points\nသင့်မှာ: ${points} Points\n\nDaily နှိပ်ပြီး စုလိုက်ရအောင် 🌸`
-        );
+        await ctx.editMessageText(`🥺 Points မလုံလောက်ဘူးနော် 💔\n\nလိုအပ်: ${cost} Points\nသင့်မှာ: ${points} Points\n\nDaily နှိပ်ပြီး စုလိုက်ရအောင် 🌸`);
         return;
       }
 
@@ -471,14 +482,10 @@ function setupBot(bot: Bot, env: Env) {
           await ctx.replyWithPhoto(new InputFile(bytes, "photo.jpg"));
           await awDeletePhoto(env, photo.$id, photo.file_id);
           sent++;
-        } catch (e: any) {
-          console.error("Photo send error:", e?.message || e);
-        }
+        } catch (e: any) {}
       }
 
-      await ctx.reply(
-        `✨ ကဲ... ${ctx.from?.first_name || "ရတနာ"} 💕\n\nဓာတ်ပုံ ${sent} ပုံ ရောက်လာပြီနော် 🌸\n\n💰 ကုန်သွားတဲ့ Points: ${cost}\n💖 ကျန်တဲ့ Points: ${points - cost}`
-      );
+      await ctx.reply(`✨ ကဲ... ${ctx.from?.first_name || "ရတနာ"} 💕\n\nဓာတ်ပုံ ${sent} ပုံ ရောက်လာပြီနော် 🌸\n\n💰 ကုန်သွားတဲ့ Points: ${cost}\n💖 ကျန်တဲ့ Points: ${points - cost}`);
     });
   }
 
@@ -499,7 +506,6 @@ function setupBot(bot: Bot, env: Env) {
     if (session) await handleInvite(ctx, env, session, ctx.from?.first_name || "သူငယ်ချင်း");
   });
 
-  // ============ Invite ============
   async function handleInvite(ctx: any, env: Env, session: any, name: string) {
     try {
       const botInfo = await bot.api.getMe();
@@ -509,17 +515,13 @@ function setupBot(bot: Bot, env: Env) {
       const points = up?.points || 0;
 
       await ctx.reply(
-        `💕 ${name} ရေ...\n\nမင်း သူငယ်ချင်းတွေကို ဖိတ်ခေါ်ချင်တာလား? 🥰\n\n` +
-          `👇 ဒီ Link ကို ကူးယူပြီး ပို့လိုက်ပါ\n\n🔗 ${link}\n\n` +
-          `✨ သူငယ်ချင်း တစ်ယောက် Join ရင် +${INVITE_POINTS} Points 💖\n\n` +
-          `👥 ခေါ်ခဲ့တဲ့ သူငယ်ချင်း: ${invites}\n💰 လက်ရှိ Points: ${points}`
+        `💕 ${name} ရေ...\n\nမင်း သူငယ်ချင်းတွေကို ဖိတ်ခေါ်ချင်တာလား? 🥰\n\n👇 ဒီ Link ကို ကူးယူပြီး ပို့လိုက်ပါ\n\n🔗 ${link}\n\n✨ သူငယ်ချင်း တစ်ယောက် Join ရင် +${INVITE_POINTS} Points 💖\n\n👥 ခေါ်ခဲ့တဲ့ သူငယ်ချင်း: ${invites}\n💰 လက်ရှိ Points: ${points}`
       );
     } catch (e: any) {
       await ctx.reply(`🥺 Error: ${e.message}`);
     }
   }
 
-  // ============ Profile ============
   async function handleProfile(ctx: any, env: Env, session: any) {
     try {
       const up = await awGetUserPoints(env, session.userId);
@@ -530,23 +532,16 @@ function setupBot(bot: Bot, env: Env) {
       const photoCount = photos.length > 0 ? "ရှိ" : "မရှိ";
 
       await ctx.reply(
-        `🌸 မင်းရဲ့ Profile လေးကို ကြည့်လိုက်ရအောင် 💕\n\n` +
-          `━━━━━━━━━━━━━━━━\n👩‍💼 Admin: 𝗭𝗵𝗼𝘀𝘁'𝘀 𝗧𝗲𝗰𝗵𝗻𝗼𝗹𝗼𝗴𝘆 (မမ)\n📧 Email: ${session.email}\n━━━━━━━━━━━━━━━━\n` +
-          `💰 Points: ${points}\n👥 Invited: ${invites} ယောက်\n🖼️ Backup Photos: ${photoCount}\n📅 Last Daily: ${lastDaily}\n` +
-          `━━━━━━━━━━━━━━━━\n\n✨ တော်တော်လေး ရတနာရေ 💖`
+        `🌸 မင်းရဲ့ Profile လေးကို ကြည့်လိုက်ရအောင် 💕\n\n━━━━━━━━━━━━━━━━\n👩‍💼 Admin: 𝗭𝗵𝗼𝘀𝘁'𝘀 𝗧𝗲𝗰𝗵𝗻𝗼𝗹𝗼𝗴𝘆 (မမ)\n📧 Email: ${session.email}\n━━━━━━━━━━━━━━━━\n💰 Points: ${points}\n👥 Invited: ${invites} ယောက်\n🖼️ Backup Photos: ${photoCount}\n📅 Last Daily: ${lastDaily}\n━━━━━━━━━━━━━━━━\n\n✨ တော်တော်လေး ရတနာရေ 💖`
       );
     } catch (e: any) {
       await ctx.reply(`🥺 Error: ${e.message}`);
     }
   }
 
-  // ============ Logout ============
   async function handleLogout(ctx: any, env: Env, session: any) {
     const kb = new InlineKeyboard().text("✅ ဟုတ်ကဲ့ Logout", "confirm_logout").text("❌ မလုပ်တော့ဘူး", "cancel_logout");
-    await ctx.reply(
-      `🥺 ရတနာရေ...\n\nတကယ် Logout လုပ်မှာလား? 💔\n\nမင်းပြန်လာတဲ့အထိ ငါ စောင့်နေမယ်နော် 🌸`,
-      { reply_markup: kb }
-    );
+    await ctx.reply(`🥺 ရတနာရေ...\n\nတကယ် Logout လုပ်မှာလား? 💔\n\nမင်းပြန်လာတဲ့အထိ ငါ စောင့်နေမယ်နော် 🌸`, { reply_markup: kb });
   }
 
   bot.callbackQuery("confirm_logout", async (ctx) => {
@@ -554,9 +549,7 @@ function setupBot(bot: Bot, env: Env) {
     if (!userId) return;
     await ctx.answerCallbackQuery();
     await clearSession(env, userId);
-    await ctx.editMessageText(
-      `💕 ရတနာရေ...\n\nမင်းကို ပြန်တွေ့ရဖို့ ငါ စောင့်နေမယ်နော် 🌸\n\nပြန်လာခဲ့ပါဦး 💖\n\n🔒 Session ကို ဖျက်လိုက်ပြီ`
-    );
+    await ctx.editMessageText(`💕 ရတနာရေ...\n\nမင်းကို ပြန်တွေ့ရဖို့ ငါ စောင့်နေမယ်နော် 🌸\n\nပြန်လာခဲ့ပါဦး 💖\n\n🔒 Session ကို ဖျက်လိုက်ပြီ`);
     await ctx.reply("/start ပြန်ရိုက်ပြီး ပြန်ဝင်လို့ရပါပြီ 💕");
   });
 
@@ -565,7 +558,6 @@ function setupBot(bot: Bot, env: Env) {
     await ctx.editMessageText(MAIN_MENU_TEXT);
   });
 
-  // ============ /about ============
   bot.command("about", async (ctx) => {
     await ctx.reply(
       `🌸 𝗔𝗯𝗼𝘂𝘁 𝗧𝗵𝗶𝘀 𝗕𝗼𝘁 💕\n\n━━━━━━━━━━━━━━━━\n👩‍💼 Owner: 𝗭𝗵𝗼𝘀𝘁'𝘀 𝗧𝗲𝗰𝗵𝗻𝗼𝗹𝗼𝗴𝘆 မမ\n🤖 Bot: Free Photo Backup Bot\n📅 Version: 1.0.0\n━━━━━━━━━━━━━━━━\n\n📢 Channel: https://t.me/${channelUsername.replace("@", "")}`
