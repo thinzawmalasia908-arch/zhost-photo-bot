@@ -107,22 +107,17 @@ async function awUpdateUserPoints(userId: string, updates: any): Promise<any> {
   });
 }
 
-// ✅ WORKING VERSION: Fetch default 25 docs (no query, no filter), then slice to limit
 async function awGetPhotos(userId: string, limit: number): Promise<any[]> {
   const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents`;
-
   try {
     const res = await fetch(url, { method: "GET", headers: awHeaders(true) });
     if (!res.ok) {
       console.log(`[awGetPhotos] Failed: ${res.status}`);
       return [];
     }
-
     const data = await res.json();
     const docs = data.documents || [];
-    console.log(`[awGetPhotos] Fetched ${docs.length} docs (Appwrite default limit)`);
-
-    // ✅ 1 point = 1 ပုံ (or N point = N ပုံ)
+    console.log(`[awGetPhotos] Fetched ${docs.length} docs`);
     return docs.slice(0, limit);
   } catch (e: any) {
     console.log(`[awGetPhotos] Exception: ${e.message}`);
@@ -159,14 +154,14 @@ async function setState(env: Env, chatId: number, state: string, extra: any = {}
 async function getState(env: Env, chatId: number): Promise<any | null> { try { const v = await env.BOT_SESSIONS.get(`state:${chatId}`); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
 async function clearState(env: Env, chatId: number) { try { await env.BOT_SESSIONS.delete(`state:${chatId}`); } catch (e) {} }
 
-const MAIN_MENU_TEXT = "🌸 ဘာလုပ်ချင်လဲ ချစ်ရာ... ငါ စောင့်နေတယ်နော် 💕";
+const MAIN_MENU_TEXT = "⚡ [SYSTEM ONLINE] Command ကိုစောင့်ဆိုင်းနေပါသည်... 🌐";
 
 function getMainKeyboard() {
   return {
     keyboard: [
-      [{ text: "📅 Daily" }, { text: "🖼️ Show Photo" }],
-      [{ text: "👥 Invite" }, { text: "👤 Profile" }],
-      [{ text: "🚪 Logout" }],
+      [{ text: "⚡ Daily Ping" }, { text: "💾 Extract Media" }],
+      [{ text: "🔗 Network Invite" }, { text: "💻 System ID" }],
+      [{ text: "🔌 Disconnect" }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -185,7 +180,7 @@ function getBot(env: Env): Bot {
 function setupBot(bot: Bot, env: Env) {
   bot.command("start", async (ctx) => {
     const userId = ctx.from?.id;
-    const name = ctx.from?.first_name || "ချစ်ရာ";
+    const name = ctx.from?.first_name || "User";
     if (!userId) return;
 
     const payload = (ctx.match || "").trim();
@@ -199,8 +194,8 @@ function setupBot(bot: Bot, env: Env) {
     } catch (e) { isJoined = true; }
 
     if (!isJoined) {
-      const kb = new InlineKeyboard().url("📢 Join ZhostTech", `https://t.me/${CHANNEL_USERNAME.replace("@", "")}`).row().text("✅ Check", "check_join");
-      await ctx.reply(`🌸 ဟယ်လို... ${name} ရေ 💕\n\nငါက 𝗭𝗵𝗼𝘀𝘁'𝘀 𝗧𝗲𝗰𝗵𝗻𝗼𝗹𝗼𝗴𝘆 𝗖𝗵𝗮𝗻𝗻𝗲𝗹 ရဲ့ Admin မမ 💕\n\nငါ့ Channel လေးကို Join ပေးပြီးမှ\nဒီ Bot လေးကို သုံးလို့ရမှာနော် 🌸\n\n👇 Join နှိပ်ပြီး "✅ Check" ကို နှိပ်လိုက်ပါ`, { reply_markup: kb });
+      const kb = new InlineKeyboard().url("📡 Connect to ZhostTech", `https://t.me/${CHANNEL_USERNAME.replace("@", "")}`).row().text("✅ Verify Access", "check_join");
+      await ctx.reply(`💻 [INIT] မင်္ဂလာပါ User: ${name} ⚡\n\nZhostTech Mainframe မှ ကြိုဆိုပါတယ်။\n\n⚠️ System Access Denied: 𝗭𝗵𝗼𝘀𝘁 𝗧𝗲𝗰𝗵𝗻𝗼𝗹𝗼𝗴𝘆 Network သို့ ချိတ်ဆက်ထားခြင်း မရှိပါ။\n\n👇 [Connect] ပြုလုပ်ပြီး "✅ Verify Access" ကို နှိပ်ပါ။`, { reply_markup: kb });
       return;
     }
 
@@ -208,59 +203,59 @@ function setupBot(bot: Bot, env: Env) {
 
     const session = await getSession(env, userId);
     if (session?.userId) {
-      await ctx.reply(`🌸 ပြန်လာတာ ဝမ်းသာတယ် ${name} ရေ 💕\n\n${MAIN_MENU_TEXT}`, { reply_markup: getMainKeyboard() });
+      await ctx.reply(`🟢 [AUTH SUCCESS] Network သို့ ပြန်လည်ရောက်ရှိပါပြီ ${name} ⚡\n\n${MAIN_MENU_TEXT}`, { reply_markup: getMainKeyboard() });
       return;
     }
 
-    const kb = new InlineKeyboard().text("🔐 Login", "do_login").text("📝 Create Account", "do_register");
-    await ctx.reply(`🌸 ဟယ်လို... ${name} ရေ 💕\n\nဒီ Bot လေးကို သုံးဖို့ App မှာ ဖွင့်ထားတဲ့ Account လိုတယ်နော် 🌸\n\nLogin ဝင်မလား? Account အသစ် ဖွင့်မလား?`, { reply_markup: kb });
+    const kb = new InlineKeyboard().text("🔐 Initialize Login", "do_login").text("📝 Register ID", "do_register");
+    await ctx.reply(`⚡ [ACCESS CONTROL] Network အသုံးပြုရန် Database Account လိုအပ်ပါသည်။ 🌐\n\nLogin ဝင်ရောက်မည်လား? System ID အသစ် ဖန်တီးမည်လား?`, { reply_markup: kb });
   });
 
   bot.command("debug", async (ctx) => {
     const session = await getSession(env, ctx.from!.id);
-    let info = `🔧 DEBUG\n\n📁 DB: ${APPWRITE_DATABASE_ID}\n📋 Table: ${APPWRITE_USER_POINTS_TABLE_ID}\n`;
+    let info = `🔧 [SYSTEM DEBUG LOGS]\n\n📁 DB: ${APPWRITE_DATABASE_ID}\n📋 Table: ${APPWRITE_USER_POINTS_TABLE_ID}\n`;
     if (session?.userId) {
-      info += `\n👤 My userId:\n${session.userId}\n`;
-      info += `\n📧 Email: ${session.email}\n`;
+      info += `\n💻 Node ID:\n${session.userId}\n`;
+      info += `\n📧 Data Link: ${session.email}\n`;
       try {
         const up = await awGetUserPoints(session.userId);
-        info += `\n📄 Doc found: ${up ? "YES ✅" : "NO ❌"}\n`;
-        if (up) info += `💰 Points: ${up.points}\n📅 Last Daily: ${up.last_daily || "none"}\n`;
+        info += `\n📄 Record Found: ${up ? "YES 🟢" : "NO 🔴"}\n`;
+        if (up) info += `🔋 Energy/Points: ${up.points}\n📅 Last Sync: ${up.last_daily || "none"}\n`;
       } catch (e: any) {
-        info += `\n❌ Error: ${e.message}\n`;
+        info += `\n🔴 Error: ${e.message}\n`;
       }
       try {
         const photos = await awGetPhotos(session.userId, 100);
-        info += `\n📸 Photos: ${photos.length} ပုံ\n`;
+        info += `\n💾 Media Packets: ${photos.length} files\n`;
       } catch (e: any) {
-        info += `\n❌ Photos error: ${e.message}\n`;
+        info += `\n🔴 Media Fetch Error: ${e.message}\n`;
       }
     } else {
-      info += `\n❌ Not logged in\n`;
+      info += `\n🔴 Status: Disconnected (Not logged in)\n`;
     }
     await ctx.reply(info);
   });
 
   bot.command("about", async (ctx) => {
-    await ctx.reply(`🌸 𝗔𝗯𝗼𝘂𝘁 𝗧𝗵𝗶𝘀 𝗕𝗼𝘁 💕\n\n👩‍💼 Owner: 𝗭𝗵𝗼𝘀𝘁'𝘀 𝗧𝗲𝗰𝗵𝗻𝗼𝗹𝗼𝗴𝘆 မမ\n🤖 Bot: Free Photo Backup Bot\n📅 Version: 1.0.0\n\n📢 Channel: https://t.me/${CHANNEL_USERNAME.replace("@", "")}`);
+    await ctx.reply(`⚡ 𝗦𝘆𝘀𝘁𝗲𝗺 𝗜𝗻𝗳𝗼𝗿𝗺𝗮𝘁𝗶𝗼𝗻 🌐\n\n👨‍💻 Root Admin: @ZawMyoNaing_Official\n🤖 Core: Cyber Backup Terminal\n📅 Build Version: 2.0.0-Cyber\n\n📡 Mainframe: https://t.me/${CHANNEL_USERNAME.replace("@", "")}`);
   });
 
   bot.callbackQuery("check_join", async (ctx) => {
     const userId = ctx.from?.id;
-    const name = ctx.from?.first_name || "ချစ်ရာ";
+    const name = ctx.from?.first_name || "User";
     if (!userId) return;
     let isJoined = false;
     try { const m = await ctx.api.getChatMember(CHANNEL_ID, userId); isJoined = ["creator", "administrator", "member", "restricted"].includes(m.status); } catch (e) {}
-    if (!isJoined) { await ctx.answerCallbackQuery({ text: "🥺 Join မလုပ်ရသေးဘူးနော် 💔", show_alert: true }); return; }
-    await ctx.answerCallbackQuery({ text: "✨ တော်တော်လေး 💕" });
+    if (!isJoined) { await ctx.answerCallbackQuery({ text: "⚠️ Access Denied: Network သို့ မချိတ်ဆက်ရသေးပါ။", show_alert: true }); return; }
+    await ctx.answerCallbackQuery({ text: "🟢 Access Granted." });
     const session = await getSession(env, userId);
     if (session?.userId) {
-      try { await ctx.editMessageText(`🌸 ပြန်လာတာ ဝမ်းသာတယ် ${name} ရေ 💕\n\n${MAIN_MENU_TEXT}`); } catch (e) {}
+      try { await ctx.editMessageText(`🟢 [AUTH SUCCESS] Network သို့ ပြန်လည်ရောက်ရှိပါပြီ ${name} ⚡\n\n${MAIN_MENU_TEXT}`); } catch (e) {}
       await ctx.reply(MAIN_MENU_TEXT, { reply_markup: getMainKeyboard() });
       return;
     }
-    const kb = new InlineKeyboard().text("🔐 Login", "do_login").text("📝 Create Account", "do_register");
-    try { await ctx.editMessageText(`✨ ဟယ်... ${name} တော်တော်လေး 💕\n\nကဲ... Account လိုတယ်နော် 🌸\n\nLogin ဝင်မလား? Account အသစ် ဖွင့်မလား?`, { reply_markup: kb }); } catch (e) {}
+    const kb = new InlineKeyboard().text("🔐 Initialize Login", "do_login").text("📝 Register ID", "do_register");
+    try { await ctx.editMessageText(`🟢 Verification အောင်မြင်ပါသည်။\n\n⚡ [ACCESS CONTROL] Network အသုံးပြုရန် Database Account လိုအပ်ပါသည်။\n\nLogin ဝင်ရောက်မည်လား? System ID အသစ် ဖန်တီးမည်လား?`, { reply_markup: kb }); } catch (e) {}
   });
 
   bot.callbackQuery("do_login", async (ctx) => {
@@ -268,7 +263,7 @@ function setupBot(bot: Bot, env: Env) {
     if (!userId) return;
     await ctx.answerCallbackQuery();
     await setState(env, userId, "waiting_email", { action: "login" });
-    await ctx.editMessageText(`🔐 ဝင်မယ်နော် ချစ်ရာ 💕\n\n📧 မင်းရဲ့ Gmail လေးကို ပို့ပေးပါဦး 🌸`);
+    await ctx.editMessageText(`🔐 [LOGIN SEQUENCE INITIATED] ⚡\n\n📧 ကျေးဇူးပြု၍ သင့်၏ Email Address ကို Terminal သို့ ထည့်သွင်းပါ။ 🌐`);
   });
 
   bot.callbackQuery("do_register", async (ctx) => {
@@ -276,24 +271,24 @@ function setupBot(bot: Bot, env: Env) {
     if (!userId) return;
     await ctx.answerCallbackQuery();
     await setState(env, userId, "waiting_email", { action: "register" });
-    await ctx.editMessageText(`📝 Account အသစ် ဖွင့်မယ်နော် ချစ်ရာ 💕\n\n📧 Gmail လေးကို ပို့ပေးပါဦး 🌸`);
+    await ctx.editMessageText(`📝 [REGISTRATION PROTOCOL INITIATED] ⚡\n\n📧 ကျေးဇူးပြု၍ မှတ်ပုံတင်ရန် Email Address ကို ထည့်သွင်းပါ။ 🌐`);
   });
 
   bot.on("message:text", async (ctx) => {
     const userId = ctx.from?.id;
     const text = ctx.message.text.trim();
-    const name = ctx.from?.first_name || "ချစ်ရာ";
+    const name = ctx.from?.first_name || "User";
     if (!userId) return;
 
     if (text.startsWith("/")) return;
 
     const session = await getSession(env, userId);
     if (session?.userId) {
-      if (text === "📅 Daily") return handleDaily(ctx, env, session);
-      if (text === "🖼️ Show Photo") return handleShowPhotoMenu(ctx, env, session);
-      if (text === "👥 Invite") return handleInvite(ctx, env, session, name);
-      if (text === "👤 Profile") return handleProfile(ctx, env, session);
-      if (text === "🚪 Logout") return handleLogout(ctx, env, session);
+      if (text === "⚡ Daily Ping") return handleDaily(ctx, env, session);
+      if (text === "💾 Extract Media") return handleShowPhotoMenu(ctx, env, session);
+      if (text === "🔗 Network Invite") return handleInvite(ctx, env, session, name);
+      if (text === "💻 System ID") return handleProfile(ctx, env, session);
+      if (text === "🔌 Disconnect") return handleLogout(ctx, env, session);
       return;
     }
 
@@ -302,11 +297,11 @@ function setupBot(bot: Bot, env: Env) {
 
     if (state.state === "waiting_email") {
       if (!text.includes("@") || text.startsWith("@")) {
-        await ctx.reply("🥺 Gmail ပုံစံ မမှန်ဘူးနော် ချစ်ရာ... ပြန်ပို့ပေးပါဦး 💕\n\nဥပမာ - zawmyo@gmail.com");
+        await ctx.reply("⚠️ [INVALID INPUT] Email ပုံစံ မမှန်ကန်ပါ။ ပြန်လည် ထည့်သွင်းပေးပါ။ 🌐\n\nFormat: admin@zhost.com");
         return;
       }
       await setState(env, userId, "waiting_password", { action: state.action, email: text, referrerId: state.referrerId });
-      await ctx.reply(`💕 ကောင်းလိုက်တာ...\n\n🔒 Password လေးကို ပို့ပေးပါဦး 🌸\n\n(အနည်းဆုံး ၈ လုံး ရှိရမယ်နော်)`);
+      await ctx.reply(`🟢 Data လက်ခံရရှိပါသည်။\n\n🔑 [ENCRYPTION] Password ကို ထည့်သွင်းပါ။ ⚡\n\n(အနည်းဆုံး ၈ လုံး ပါဝင်ရမည်)`);
       return;
     }
 
@@ -315,7 +310,7 @@ function setupBot(bot: Bot, env: Env) {
       const password = text;
       const action = state.action;
       if (password.length < 8) {
-        await ctx.reply("🥺 Password က အနည်းဆုံး ၈ လုံး ရှိရမယ်နော် ချစ်ရာ... ပြန်ပို့ပေးပါဦး 💕");
+        await ctx.reply("⚠️ [SECURITY WARNING] Password သည် အနည်းဆုံး ၈ လုံး ရှိရပါမည်။ ပြန်လည် ထည့်သွင်းပေးပါ။ 🔒");
         return;
       }
       try {
@@ -324,7 +319,7 @@ function setupBot(bot: Bot, env: Env) {
         else { user = await awLogin(email, password); }
 
         const appwriteUserId = user.$id;
-        if (!appwriteUserId) throw new Error("User ID မရပါ");
+        if (!appwriteUserId) throw new Error("System ID မရရှိပါ");
 
         await setSession(env, userId, { userId: appwriteUserId, email: email });
         let userPoints = await awGetUserPoints(appwriteUserId);
@@ -334,9 +329,9 @@ function setupBot(bot: Bot, env: Env) {
         }
 
         await clearState(env, userId);
-        await ctx.reply(`✨ ဝိုး... ရောက်သွားပြီနော် ${name} ရေ 💕\n\nမင်းကို ပြန်တွေ့ရတာ အရမ်းဝမ်းသာတယ် 🥰\n\n${MAIN_MENU_TEXT}`, { reply_markup: getMainKeyboard() });
+        await ctx.reply(`🟢 [SYSTEM CONNECTED] လင့်ခ်ချိတ်ဆက်မှု အောင်မြင်ပါသည်။ ${name} ⚡\n\nDatabase သို့ ဝင်ရောက်ခွင့် ရရှိပါပြီ။\n\n${MAIN_MENU_TEXT}`, { reply_markup: getMainKeyboard() });
       } catch (e: any) {
-        await ctx.reply(`🥺 Error:\n\n${e.message}`);
+        await ctx.reply(`🔴 [SYSTEM ERROR]:\n\n${e.message}`);
         await clearState(env, userId);
       }
       return;
@@ -353,16 +348,16 @@ function setupBot(bot: Bot, env: Env) {
       const lastDaily = (up.last_daily || "").split("T")[0];
 
       if (lastDaily === today) {
-        await ctx.reply(`🥺 ချစ်ရာ... ဒီနေ့အတွက် ရယူပြီးသားလေ 💔\n\nမနက်ဖန် ပြန်လာခဲ့ပါဦးနော် 💕\n\n💰 လက်ရှိ Points: ${up.points || 0}`);
+        await ctx.reply(`⚠️ [REQUEST LIMIT] ဒီနေ့အတွက် Data Points ထုတ်ယူပြီးဖြစ်ပါသည်။ 🚫\n\nNext Reset: မနက်ဖြန်တွင် ပြန်လည် ကြိုးစားပါ။\n\n🔋 လက်ရှိ Energy Points: ${up.points || 0}`);
         return;
       }
 
       const np = (up.points || 0) + DAILY_POINTS;
       await awUpdateUserPoints(userId, { points: np, last_daily: new Date().toISOString() });
 
-      await ctx.reply(`💕 အိုး... ${ctx.from?.first_name || "ချစ်ရာ"} လာပြီနော် 🌸\n\nဒီနေ့အတွက် Daily Bonus လေး ယူလိုက်ပါ 💫\n\n✨ +${DAILY_POINTS} Points ရသွားပြီ 💖\n💰 လက်ရှိ Points: ${np}`);
+      await ctx.reply(`🟢 [DAILY PROTOCOL EXECUTED] User: ${ctx.from?.first_name || "Unknown"} ⚡\n\nDaily Bonus ရရှိပါသည်။ 🌐\n\n🔋 +${DAILY_POINTS} Points ထည့်သွင်းပြီးပါပြီ။\n💰 Total Points: ${np}`);
     } catch (e: any) {
-      await ctx.reply(`🥺 Error:\n\n${e.message}`);
+      await ctx.reply(`🔴 [ERROR]:\n\n${e.message}`);
     }
   }
 
@@ -371,14 +366,14 @@ function setupBot(bot: Bot, env: Env) {
       const up = await awGetUserPoints(session.userId);
       const points = up?.points || 0;
       if (points < 1) {
-        const kb = new InlineKeyboard().text("📅 Daily ယူမယ်", "go_daily").text("👥 Invite ခေါ်မယ်", "go_invite");
-        await ctx.reply(`🥺 ချစ်ရာ... မင်းမှာ Points မရှိသေးဘူးနော် 💔\n\n💫 Daily နှိပ်ရင် ${DAILY_POINTS} Points ရမယ်\n💫 Invite ခေါ်ရင် တစ်ယောက်ကို ${INVITE_POINTS} Points ရမယ်\n\nကဲ... စုလိုက်ရအောင် 🌸`, { reply_markup: kb });
+        const kb = new InlineKeyboard().text("⚡ Run Daily Ping", "go_daily").text("🔗 Network Invite", "go_invite");
+        await ctx.reply(`⚠️ [INSUFFICIENT ENERGY] သင့်အကောင့်တွင် Points မလုံလောက်ပါ။ 🚫\n\n🔋 Daily Ping မှ ${DAILY_POINTS} Points ရရှိနိုင်ပါသည်။\n🔋 Network Invite မှ ${INVITE_POINTS} Points ရရှိနိုင်ပါသည်။\n\nPoints စုဆောင်းရန် အောက်ပါ Command များကို အသုံးပြုပါ။ ⚡`, { reply_markup: kb });
         return;
       }
-      const kb = new InlineKeyboard().text("⭐ 1 Point", "sp_1").text("⭐⭐ 2 Points", "sp_2").row().text("⭐⭐⭐ 3 Points", "sp_3").text("⭐⭐⭐⭐ 4 Points", "sp_4").row().text("⭐⭐⭐⭐⭐ 5 Points", "sp_5").row().text("⬅️ Back", "go_menu");
-      await ctx.reply(`🌸 ချစ်ရာ...\n\nမင်းရဲ့ အမှတ်တရ ဓာတ်ပုံလေးတွေ ကြည့်မလား? 💕\n\nဘယ်နှပုံ ကြည့်ချင်လဲ? 🥰\n\n💰 လက်ရှိ Points: ${points}`, { reply_markup: kb });
+      const kb = new InlineKeyboard().text("💠 1 Point", "sp_1").text("💠💠 2 Points", "sp_2").row().text("💠💠💠 3 Points", "sp_3").text("💠💠💠💠 4 Points", "sp_4").row().text("💠💠💠💠💠 5 Points", "sp_5").row().text("⬅️ Return", "go_menu");
+      await ctx.reply(`💾 [MEDIA EXTRACTOR] ⚡\n\nBackup ပြုလုပ်ထားသော Media ဖိုင်များကို ဒေါင်းလုဒ်ဆွဲရန် Data Point ပမာဏ ရွေးချယ်ပါ။ 🌐\n\n🔋 လက်ရှိ Energy Points: ${points}`, { reply_markup: kb });
     } catch (e: any) {
-      await ctx.reply(`🥺 Error:\n\n${e.message}`);
+      await ctx.reply(`🔴 [ERROR]:\n\n${e.message}`);
     }
   }
 
@@ -390,24 +385,24 @@ function setupBot(bot: Bot, env: Env) {
 
       const session = await getSession(env, userId);
       if (!session?.userId) {
-        try { await ctx.editMessageText("🥺 Session ကုန်သွားပြီ... /start ပြန်ရိုက်ပါ 💕"); } catch (e) {}
+        try { await ctx.editMessageText("⚠️ [SESSION EXPIRED] Session သက်တမ်း ကုန်ဆုံးသွားပါသည်။ /start ဖြင့် ပြန်လည်ချိတ်ဆက်ပါ။ 🔄"); } catch (e) {}
         return;
       }
       const cost = n;
       const up = await awGetUserPoints(session.userId);
       const points = up?.points || 0;
       if (points < cost) {
-        try { await ctx.editMessageText(`🥺 Points မလုံလောက်ဘူးနော် ချစ်ရာ 💔\n\nလိုအပ်: ${cost} Points\nသင့်မှာ: ${points} Points\n\nDaily နှိပ်ပြီး စုလိုက်ရအောင် 🌸`); } catch (e) {}
+        try { await ctx.editMessageText(`⚠️ [INSUFFICIENT ENERGY] Points မလုံလောက်ပါ။ 🚫\n\nလိုအပ်ချက်: ${cost} Points\nလက်ရှိပမာဏ: ${points} Points\n\nDaily Protocol ဖြင့် Points ပြန်လည်ဖြည့်တင်းပါ။ ⚡`); } catch (e) {}
         return;
       }
 
       await awUpdateUserPoints(session.userId, { points: points - cost });
-      try { await ctx.editMessageText(`🌸 ခဏစောင့်ပါနော် ချစ်ရာ... ရှာနေတယ် 💕`); } catch (e) {}
+      try { await ctx.editMessageText(`⚙️ [PROCESSING] Data Packets များကို ရှာဖွေနေပါသည်... 🌐`); } catch (e) {}
 
       const photos = await awGetPhotos(session.userId, cost);
       if (!photos || photos.length === 0) {
         await awUpdateUserPoints(session.userId, { points: points });
-        try { await ctx.editMessageText(`🥺 ဓာတ်ပုံ မရှိတော့ဘူးနော် 💔\n\nApp ကနေ ပြန် Backup လုပ်ပေးပါဦး 🌸`); } catch (e) {}
+        try { await ctx.editMessageText(`⚠️ [404 NOT FOUND] Cloud ပေါ်တွင် Media ဖိုင်များ မရှိတော့ပါ။ 🚫\n\nApplication မှတစ်ဆင့် Backup ထပ်မံပြုလုပ်ပေးပါ။ ⚡`); } catch (e) {}
         return;
       }
 
@@ -426,7 +421,7 @@ function setupBot(bot: Bot, env: Env) {
       }
 
       try {
-        await ctx.reply(`✨ ကဲ... ${ctx.from?.first_name || "ချစ်ရာ"} 💕\n\nဓာတ်ပုံ ${sent} ပုံ ရောက်လာပြီနော် 🌸\n\n💰 ကုန်သွားတဲ့ Points: ${cost}\n💖 ကျန်တဲ့ Points: ${points - cost}`);
+        await ctx.reply(`🟢 [EXTRACTION COMPLETE] ⚡\n\nMedia ${sent} ဖိုင် ဒေါင်းလုဒ်ဆွဲခြင်း အောင်မြင်ပါသည်။ 🌐\n\n🔋 အသုံးပြုခဲ့သော Points: ${cost}\n💰 ကျန်ရှိသော Points: ${points - cost}`);
       } catch (e) {}
     });
   }
@@ -443,7 +438,7 @@ function setupBot(bot: Bot, env: Env) {
   bot.callbackQuery("go_invite", async (ctx) => {
     try { await ctx.answerCallbackQuery(); } catch (e) {}
     const session = await getSession(env, ctx.from!.id);
-    if (session) await handleInvite(ctx, env, session, ctx.from?.first_name || "ချစ်ရာ");
+    if (session) await handleInvite(ctx, env, session, ctx.from?.first_name || "User");
   });
 
   async function handleInvite(ctx: any, env: Env, session: any, name: string) {
@@ -453,8 +448,8 @@ function setupBot(bot: Bot, env: Env) {
       const up = await awGetUserPoints(session.userId);
       const invites = up?.total_invites || 0;
       const points = up?.points || 0;
-      await ctx.reply(`💕 ${name} ရေ...\n\nမင်း သူငယ်ချင်းတွေကို ဖိတ်ခေါ်ချင်တာလား? 🥰\n\n👇 ဒီ Link ကို ကူးယူပြီး ပို့လိုက်ပါ\n\n🔗 ${link}\n\n✨ သူငယ်ချင်း တစ်ယောက် Join ရင် +${INVITE_POINTS} Points 💖\n\n👥 ခေါ်ခဲ့တဲ့ သူငယ်ချင်း: ${invites}\n💰 လက်ရှိ Points: ${points}`);
-    } catch (e: any) { await ctx.reply(`🥺 Error:\n\n${e.message}`); }
+      await ctx.reply(`🔗 [NETWORK INVITE SYSTEM] ⚡\n\nအခြား Node များကို Network သို့ ဖိတ်ခေါ်ရန် အောက်ပါ Link ကို အသုံးပြုပါ။ 🌐\n\n🔗 ${link}\n\n🔋 User တစ်ဦးချိတ်ဆက်တိုင်း +${INVITE_POINTS} Points ရရှိပါမည်။\n\n👥 ချိတ်ဆက်ပြီးသော Nodes: ${invites}\n💰 လက်ရှိ Points: ${points}`);
+    } catch (e: any) { await ctx.reply(`🔴 [ERROR]:\n\n${e.message}`); }
   }
 
   async function handleProfile(ctx: any, env: Env, session: any) {
@@ -462,14 +457,14 @@ function setupBot(bot: Bot, env: Env) {
       const up = await awGetUserPoints(session.userId);
       const points = up?.points || 0;
       const invites = up?.total_invites || 0;
-      const lastDaily = up?.last_daily ? new Date(up.last_daily).toLocaleDateString() : "မရှိ";
-      await ctx.reply(`🌸 မင်းရဲ့ Profile လေးကို ကြည့်လိုက်ရအောင် 💕\n\n━━━━━━━━━━━━━━━━\n👩‍💼 Admin: 𝗭𝗵𝗼𝘀𝘁'𝘀 𝗧𝗲𝗰𝗵𝗻𝗼𝗹𝗼𝗴𝘆 (မမ)\n📧 Email: ${session.email}\n━━━━━━━━━━━━━━━━\n💰 Points: ${points}\n👥 Invited: ${invites} ယောက်\n📅 Last Daily: ${lastDaily}\n━━━━━━━━━━━━━━━━\n\n✨ တော်တော်လေး ချစ်ရာ 💖`);
-    } catch (e: any) { await ctx.reply(`🥺 Error:\n\n${e.message}`); }
+      const lastDaily = up?.last_daily ? new Date(up.last_daily).toLocaleDateString() : "No Data";
+      await ctx.reply(`💻 𝗦𝘆𝘀𝘁𝗲𝗺 𝗜𝗗 𝗗𝗮𝘁𝗮 ⚡\n\n━━━━━━━━━━━━━━━━\n👨‍💻 Server Admin: @ZawMyoNaing_Official\n📧 Database Link: ${session.email}\n━━━━━━━━━━━━━━━━\n🔋 Energy Points: ${points}\n👥 Network Nodes: ${invites} users\n📅 Last Daily Sync: ${lastDaily}\n━━━━━━━━━━━━━━━━\n\n🟢 Status: Online`);
+    } catch (e: any) { await ctx.reply(`🔴 [ERROR]:\n\n${e.message}`); }
   }
 
   async function handleLogout(ctx: any, env: Env, session: any) {
-    const kb = new InlineKeyboard().text("✅ ဟုတ်ကဲ့ Logout", "confirm_logout").text("❌ မလုပ်တော့ဘူး", "cancel_logout");
-    await ctx.reply(`🥺 ချစ်ရာ...\n\nတကယ် Logout လုပ်မှာလား? 💔\n\nမင်းပြန်လာတဲ့အထိ ငါ စောင့်နေမယ်နော် 🌸`, { reply_markup: kb });
+    const kb = new InlineKeyboard().text("⚠️ Confirm Disconnect", "confirm_logout").text("❌ Cancel", "cancel_logout");
+    await ctx.reply(`⚠️ [WARNING] System\n\nZhost Mainframe မှ Disconnect ပြုလုပ်မည်မှာ သေချာပါသလား? 🔌`, { reply_markup: kb });
   }
 
   bot.callbackQuery("confirm_logout", async (ctx) => {
@@ -477,12 +472,12 @@ function setupBot(bot: Bot, env: Env) {
     if (!userId) return;
     try { await ctx.answerCallbackQuery(); } catch (e) {}
     await clearSession(env, userId);
-    try { await ctx.editMessageText(`💕 ချစ်ရာ...\n\nမင်းကို ပြန်တွေ့ရဖို့ ငါ စောင့်နေမယ်နော် 🌸\n\nပြန်လာခဲ့ပါဦး 💖\n\n🔒 Session ကို ဖျက်လိုက်ပြီ`); } catch (e) {}
-    await ctx.reply("/start ပြန်ရိုက်ပြီး ပြန်ဝင်လို့ရပါပြီ 💕");
+    try { await ctx.editMessageText(`🔌 [DISCONNECTED] ⚡\n\nSession Terminated. Server နှင့် အဆက်အသွယ် ဖြတ်တောက်လိုက်ပါပြီ။ 🌐`); } catch (e) {}
+    await ctx.reply("ပြန်လည်ချိတ်ဆက်ရန် /start Command ကို အသုံးပြုပါ။ ⚡");
   });
 
   bot.callbackQuery("cancel_logout", async (ctx) => {
-    try { await ctx.answerCallbackQuery({ text: "💕 ကောင်းလိုက်တာ" }); } catch (e) {}
+    try { await ctx.answerCallbackQuery({ text: "🟢 Action Cancelled" }); } catch (e) {}
     try { await ctx.editMessageText(MAIN_MENU_TEXT); } catch (e) {}
   });
 }
@@ -491,7 +486,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/") {
-      return new Response("🌸 Zhost Photo Bot is running! 💕", { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+      return new Response("⚡ Zhost Cyber Terminal is Online! 🌐", { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
     }
     if (url.pathname === "/webhook") {
       try {
