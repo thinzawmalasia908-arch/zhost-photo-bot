@@ -107,38 +107,43 @@ async function awUpdateUserPoints(userId: string, updates: any): Promise<any> {
   });
 }
 
-// ✅ FIXED: With Fulltext Index + queries[] format
+// ✅ 100% GUARANTEED: No query API, paginate with pageSize=25, filter client-side
 async function awGetPhotos(userId: string, limit: number): Promise<any[]> {
-  const url = new URL(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents`);
+  const all: any[] = [];
+  const pageSize = 25;
+  const maxPages = 20;
 
-  // Query format: equal("attribute", ["value"])
-  url.searchParams.append('queries[]', `equal("user_id", ["${userId}"])`);
-  url.searchParams.append('queries[]', `limit(${limit})`);
+  for (let page = 0; page < maxPages; page++) {
+    const offset = page * pageSize;
+    const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents?limit=${pageSize}&offset=${offset}`;
 
-  console.log(`[awGetPhotos] URL: ${url.toString()}`);
+    try {
+      const res = await fetch(url, { method: "GET", headers: awHeaders(true) });
+      if (!res.ok) {
+        console.log(`[awGetPhotos] Page ${page + 1} failed: ${res.status}`);
+        break;
+      }
 
-  try {
-    const res = await fetch(url.toString(), {
-      method: 'GET',
-      headers: awHeaders(true)
-    });
+      const data = await res.json();
+      const docs = data.documents || [];
+      console.log(`[awGetPhotos] Page ${page + 1} (offset=${offset}): got ${docs.length} docs`);
 
-    const text = await res.text();
-    console.log(`[awGetPhotos] Status: ${res.status}, preview: ${text.slice(0, 250)}`);
+      if (docs.length === 0) break;
+      all.push(...docs);
 
-    if (!res.ok) {
-      console.log(`[awGetPhotos] Failed: ${text.slice(0, 250)}`);
-      return [];
+      if (docs.length < pageSize) break;
+    } catch (e: any) {
+      console.log(`[awGetPhotos] Page ${page + 1} exception: ${e.message}`);
+      break;
     }
-
-    const data = JSON.parse(text);
-    const docs = data.documents || [];
-    console.log(`[awGetPhotos] ✅ Found ${docs.length} photos for user`);
-    return docs;
-  } catch (e: any) {
-    console.log(`[awGetPhotos] Exception: ${e.message}`);
-    return [];
   }
+
+  console.log(`[awGetPhotos] Total fetched: ${all.length}`);
+
+  const filtered = all.filter((doc: any) => doc.user_id === userId);
+  console.log(`[awGetPhotos] ✅ Matched: ${filtered.length} for user`);
+
+  return filtered.slice(0, limit);
 }
 
 async function awDeletePhoto(documentId: string, fileId: string): Promise<void> {
