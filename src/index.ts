@@ -114,18 +114,19 @@ async function awUpdateUserPoints(userId: string, updates: any): Promise<any> {
   return result;
 }
 
-// ⚠️ KEY FIX: URLSearchParams ကို သုံးပြီး queries[] parameter ကို safely append
+// ⚠️ CRITICAL FIX: URLSearchParams uses '+' for space — Appwrite needs '%20'
 async function awGetPhotos(userId: string, limit: number): Promise<any[]> {
   const url = new URL(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents`);
-
-  // URLSearchParams က [] နဲ့ " ကို Auto-encode လုပ်ပေးတယ်
   url.searchParams.append("queries[]", `equal("user_id", ["${userId}"])`);
   url.searchParams.append("queries[]", `limit(${limit})`);
 
-  console.log(`[awGetPhotos] Final URL: ${url.toString()}`);
+  // ⚠️ KEY FIX: Replace '+' with '%20'
+  const finalUrl = url.toString().replace(/\+/g, "%20");
+
+  console.log(`[awGetPhotos] Final URL: ${finalUrl}`);
 
   try {
-    const res = await fetch(url.toString(), {
+    const res = await fetch(finalUrl, {
       method: "GET",
       headers: awHeaders()
     });
