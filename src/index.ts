@@ -21,9 +21,6 @@ export interface Env {
   [key: string]: any;
 }
 
-// ============================================
-// APPWRITE API HELPERS
-// ============================================
 function awHeaders(): Headers {
   const headers = new Headers();
   headers.set("Content-Type", "application/json");
@@ -60,20 +57,9 @@ async function awLogin(email: string, password: string): Promise<any> {
   try { data = JSON.parse(text); } catch (e) { throw new Error(`awLogin: HTML (${res.status})`); }
   if (!res.ok) throw new Error(`awLogin: ${data.message || "Login failed"}`);
 
-  // ⚠️ Session Response: $id = session ID, userId = USER ID
-  // User အချက်အလက်ကို ရယူဖို့ account.get() ကို ခေါ်ရမယ်
-  const userRes = await fetch(`${APPWRITE_ENDPOINT}/account`, {
-    headers: {
-      "X-Appwrite-Project": APPWRITE_PROJECT_ID,
-      "X-Appwrite-Session": data.$id, // Session ID
-    },
-  });
-  const userText = await userRes.text();
-  let userData;
-  try { userData = JSON.parse(userText); } catch (e) { throw new Error(`awLogin account: HTML (${userRes.status})`); }
-  if (!userRes.ok) throw new Error(`awLogin account: ${userData.message || "Failed"}`);
-
-  return userData;
+  // ✅ Login Response မှာ userId က တိုက်ရိုက် ပါပြီးသား
+  console.log(`[awLogin] Session $id=${data.$id}, userId=${data.userId}`);
+  return { $id: data.userId };
 }
 
 async function awRegister(email: string, password: string): Promise<any> {
@@ -87,6 +73,7 @@ async function awRegister(email: string, password: string): Promise<any> {
   let data;
   try { data = JSON.parse(text); } catch (e) { throw new Error(`awRegister: HTML (${res.status})`); }
   if (!res.ok) throw new Error(`awRegister: ${data.message || "Register failed"}`);
+  console.log(`[awRegister] User $id=${data.$id}`);
   return data;
 }
 
@@ -113,11 +100,10 @@ async function awCreateUserPoints(userId: string, chatId: number, invitedBy: str
   };
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents`;
   console.log(`[awCreateUserPoints] Creating doc with ID=${userId}`);
-  const result = await awFetch(path, {
+  return await awFetch(path, {
     method: "POST",
     body: JSON.stringify({ documentId: userId, data: payload })
   });
-  return result;
 }
 
 async function awUpdateUserPoints(userId: string, updates: any): Promise<any> {
@@ -345,11 +331,8 @@ function setupBot(bot: Bot, env: Env) {
         if (action === "register") { user = await awRegister(email, password); }
         else { user = await awLogin(email, password); }
 
-        // ⚠️ KEY FIX: user.$id က session ID ဖြစ်နိုင်၊ user.userId က user ID
-        // Register response: $id = USER ID
-        // Login response (account.get): $id = USER ID
-        const appwriteUserId = user.$id || user.userId;
-        console.log(`[Login/Register] action=${action}, user.$id=${user.$id}, user.userId=${user.userId}, using=${appwriteUserId}`);
+        const appwriteUserId = user.$id;
+        console.log(`[Login/Register] action=${action}, userId=${appwriteUserId}`);
 
         if (!appwriteUserId) throw new Error("User ID မရပါ");
 
@@ -375,7 +358,6 @@ function setupBot(bot: Bot, env: Env) {
       const userId = session.userId;
       let up = await awGetUserPoints(userId);
       if (!up) {
-        console.log("[handleDaily] No doc, creating...");
         up = await awCreateUserPoints(userId, ctx.from.id);
       }
 
