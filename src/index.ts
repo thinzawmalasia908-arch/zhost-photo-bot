@@ -1,5 +1,8 @@
 import { Bot, webhookCallback, InlineKeyboard, InputFile } from "grammy";
 
+// ===========================================
+// HARDCODED CREDENTIALS
+// ===========================================
 const BOT_TOKEN = "8947544923:AAG4Wrh70eqP4ybIfpsiPjWDriLXeMNgrw8";
 const APPWRITE_API_KEY = "standard_3bbe927011c69872ba0e251623c062429b073adb83e47ee9e3edf31131e846683e2cbdcc75064ea65b798803d161ee703f70640040feef0bddf8e1850d098b8542beab30fc7e329fed2a3e1acfbce492223937d186af55dade513639bc3c81256effa1594413ec197982d50b4c506fa0ba3c41ade9cfc06f3285d40f0c9d413d";
 const APPWRITE_ENDPOINT = "https://fra.cloud.appwrite.io/v1";
@@ -18,6 +21,9 @@ export interface Env {
   [key: string]: any;
 }
 
+// ============================================
+// APPWRITE API HELPERS
+// ============================================
 function awHeaders(): Headers {
   const headers = new Headers();
   headers.set("Content-Type", "application/json");
@@ -53,7 +59,21 @@ async function awLogin(email: string, password: string): Promise<any> {
   let data;
   try { data = JSON.parse(text); } catch (e) { throw new Error(`awLogin: HTML (${res.status})`); }
   if (!res.ok) throw new Error(`awLogin: ${data.message || "Login failed"}`);
-  return data;
+
+  // ⚠️ Session Response: $id = session ID, userId = USER ID
+  // User အချက်အလက်ကို ရယူဖို့ account.get() ကို ခေါ်ရမယ်
+  const userRes = await fetch(`${APPWRITE_ENDPOINT}/account`, {
+    headers: {
+      "X-Appwrite-Project": APPWRITE_PROJECT_ID,
+      "X-Appwrite-Session": data.$id, // Session ID
+    },
+  });
+  const userText = await userRes.text();
+  let userData;
+  try { userData = JSON.parse(userText); } catch (e) { throw new Error(`awLogin account: HTML (${userRes.status})`); }
+  if (!userRes.ok) throw new Error(`awLogin account: ${userData.message || "Failed"}`);
+
+  return userData;
 }
 
 async function awRegister(email: string, password: string): Promise<any> {
@@ -70,12 +90,7 @@ async function awRegister(email: string, password: string): Promise<any> {
   return data;
 }
 
-// ============================================
-// ⚠️ ဒီ Function တွေက ပြောင်းလဲသွားတယ်
-// Document ID ကို userId ပဲ သုံးမယ်
-// ============================================
 async function awGetUserPoints(userId: string): Promise<any | null> {
-  // Direct GET by document ID = userId
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents/${encodeURIComponent(userId)}`;
   try {
     const data = await awFetch(path, { method: "GET" });
@@ -115,7 +130,6 @@ async function awUpdateUserPoints(userId: string, updates: any): Promise<any> {
   return result;
 }
 
-// Photos အတွက် — query သုံးရမယ် (multiple docs per user)
 async function awGetPhotos(userId: string, limit: number): Promise<any[]> {
   const queries = JSON.stringify([
     `equal("user_id", "${userId}")`,
@@ -124,6 +138,7 @@ async function awGetPhotos(userId: string, limit: number): Promise<any[]> {
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents?queries=${encodeURIComponent(queries)}`;
   try {
     const data = await awFetch(path, { method: "GET" });
+    console.log(`[awGetPhotos] Found ${data.documents?.length || 0} photos for user ${userId}`);
     return data.documents || [];
   } catch (e: any) {
     console.log(`[awGetPhotos] Error: ${e.message}`);
@@ -224,13 +239,23 @@ function setupBot(bot: Bot, env: Env) {
     const session = await getSession(env, ctx.from!.id);
     let info = `🔧 DEBUG\n\n📁 DB: ${APPWRITE_DATABASE_ID}\n📋 Table: ${APPWRITE_USER_POINTS_TABLE_ID}\n`;
     if (session?.userId) {
-      info += `\n👤 My userId: ${session.userId}\n`;
+      info += `\n👤 My userId:\n${session.userId}\n`;
+      info += `\n📧 Email: ${session.email}\n`;
       try {
         const up = await awGetUserPoints(session.userId);
-        info += `\n📄 Doc found: ${up ? "YES" : "NO"}\n`;
+        info += `\n📄 Doc found: ${up ? "YES ✅" : "NO ❌"}\n`;
         if (up) info += `💰 Points: ${up.points}\n📅 Last Daily: ${up.last_daily || "none"}\n`;
       } catch (e: any) {
         info += `\n❌ Error: ${e.message}\n`;
+      }
+      try {
+        const photos = await awGetPhotos(session.userId, 50);
+        info += `\n📸 Photos: ${photos.length} ပုံ\n`;
+        if (photos.length > 0) {
+          info += `\nFirst photo user_id:\n${photos[0].user_id}\n`;
+        }
+      } catch (e: any) {
+        info += `\n❌ Photos error: ${e.message}\n`;
       }
     } else {
       info += `\n❌ Not logged in\n`;
@@ -319,7 +344,13 @@ function setupBot(bot: Bot, env: Env) {
         let user;
         if (action === "register") { user = await awRegister(email, password); }
         else { user = await awLogin(email, password); }
+
+        // ⚠️ KEY FIX: user.$id က session ID ဖြစ်နိုင်၊ user.userId က user ID
+        // Register response: $id = USER ID
+        // Login response (account.get): $id = USER ID
         const appwriteUserId = user.$id || user.userId;
+        console.log(`[Login/Register] action=${action}, user.$id=${user.$id}, user.userId=${user.userId}, using=${appwriteUserId}`);
+
         if (!appwriteUserId) throw new Error("User ID မရပါ");
 
         await setSession(env, userId, { userId: appwriteUserId, email: email });
