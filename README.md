@@ -1,2 +1,1 @@
 # zhost-photo-bot
-#he
