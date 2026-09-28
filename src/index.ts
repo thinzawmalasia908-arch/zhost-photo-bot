@@ -56,8 +56,6 @@ async function awLogin(email: string, password: string): Promise<any> {
   let data;
   try { data = JSON.parse(text); } catch (e) { throw new Error(`awLogin: HTML (${res.status})`); }
   if (!res.ok) throw new Error(`awLogin: ${data.message || "Login failed"}`);
-
-  // ✅ Login Response မှာ userId က တိုက်ရိုက် ပါပြီးသား
   console.log(`[awLogin] Session $id=${data.$id}, userId=${data.userId}`);
   return { $id: data.userId };
 }
@@ -116,12 +114,14 @@ async function awUpdateUserPoints(userId: string, updates: any): Promise<any> {
   return result;
 }
 
+// ⚠️ KEY FIX: equal() မှာ value ကို [ ] (Array) နဲ့ ထည့်ရမယ်
 async function awGetPhotos(userId: string, limit: number): Promise<any[]> {
   const queries = JSON.stringify([
-    `equal("user_id", "${userId}")`,
+    `equal("user_id", ["${userId}"])`,
     `limit(${limit})`
   ]);
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents?queries=${encodeURIComponent(queries)}`;
+  console.log(`[awGetPhotos] Query: ${queries}`);
   try {
     const data = await awFetch(path, { method: "GET" });
     console.log(`[awGetPhotos] Found ${data.documents?.length || 0} photos for user ${userId}`);
