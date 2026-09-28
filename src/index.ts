@@ -56,6 +56,7 @@ async function awLogin(email: string, password: string): Promise<any> {
   let data;
   try { data = JSON.parse(text); } catch (e) { throw new Error(`awLogin: HTML (${res.status})`); }
   if (!res.ok) throw new Error(`awLogin: ${data.message || "Login failed"}`);
+  console.log(`[awLogin] Session $id=${data.$id}, userId=${data.userId}`);
   return { $id: data.userId };
 }
 
@@ -70,6 +71,7 @@ async function awRegister(email: string, password: string): Promise<any> {
   let data;
   try { data = JSON.parse(text); } catch (e) { throw new Error(`awRegister: HTML (${res.status})`); }
   if (!res.ok) throw new Error(`awRegister: ${data.message || "Register failed"}`);
+  console.log(`[awRegister] User $id=${data.$id}`);
   return data;
 }
 
@@ -77,8 +79,10 @@ async function awGetUserPoints(userId: string): Promise<any | null> {
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents/${encodeURIComponent(userId)}`;
   try {
     const data = await awFetch(path, { method: "GET" });
+    console.log(`[awGetUserPoints] Found doc, points=${data.points}`);
     return data;
   } catch (e: any) {
+    console.log(`[awGetUserPoints] Not found: ${e.message}`);
     return null;
   }
 }
@@ -93,6 +97,7 @@ async function awCreateUserPoints(userId: string, chatId: number, invitedBy: str
     invited_by: invitedBy,
   };
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents`;
+  console.log(`[awCreateUserPoints] Creating doc with ID=${userId}`);
   return await awFetch(path, {
     method: "POST",
     body: JSON.stringify({ documentId: userId, data: payload })
@@ -101,80 +106,45 @@ async function awCreateUserPoints(userId: string, chatId: number, invitedBy: str
 
 async function awUpdateUserPoints(userId: string, updates: any): Promise<any> {
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents/${encodeURIComponent(userId)}`;
-  return await awFetch(path, {
+  const result = await awFetch(path, {
     method: "PATCH",
     body: JSON.stringify({ data: updates })
   });
+  console.log(`[awUpdateUserPoints] Updated, new points=${result.points}`);
+  return result;
 }
 
-// ⚠️ MULTI-APPROACH: ၃ နည်းလမ်းလုံး စမ်းမယ်
+// ⚠️ KEY FIX: URLSearchParams ကို သုံးပြီး queries[] parameter ကို safely append
 async function awGetPhotos(userId: string, limit: number): Promise<any[]> {
-  const basePath = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents`;
+  const url = new URL(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents`);
 
-  // ============ Approach 1: JSON Array Format ============
+  // URLSearchParams က [] နဲ့ " ကို Auto-encode လုပ်ပေးတယ်
+  url.searchParams.append("queries[]", `equal("user_id", ["${userId}"])`);
+  url.searchParams.append("queries[]", `limit(${limit})`);
+
+  console.log(`[awGetPhotos] Final URL: ${url.toString()}`);
+
   try {
-    const queries = JSON.stringify([
-      `equal("user_id", ["${userId}"])`,
-      `limit(${limit})`
-    ]);
-    const url1 = `${basePath}?queries=${encodeURIComponent(queries)}`;
-    console.log(`[awGetPhotos-A1] ${url1}`);
-    const res1 = await fetch(`${APPWRITE_ENDPOINT}${url1}`, { headers: awHeaders() });
-    const t1 = await res1.text();
-    console.log(`[awGetPhotos-A1] Status ${res1.status}, preview: ${t1.slice(0, 200)}`);
-    if (res1.ok) {
-      const d1 = JSON.parse(t1);
-      if (d1.documents && d1.documents.length > 0) {
-        console.log(`[awGetPhotos-A1] SUCCESS: ${d1.documents.length} photos`);
-        return d1.documents;
-      }
-    }
-  } catch (e: any) {
-    console.log(`[awGetPhotos-A1] Error: ${e.message}`);
-  }
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: awHeaders()
+    });
+    const text = await res.text();
+    console.log(`[awGetPhotos] Status: ${res.status}, preview: ${text.slice(0, 200)}`);
 
-  // ============ Approach 2: URL-encoded brackets ============
-  try {
-    const q1 = encodeURIComponent(`equal("user_id", ["${userId}"])`);
-    const q2 = encodeURIComponent(`limit(${limit})`);
-    const url2 = `${basePath}?queries[]=${q1}&queries[]=${q2}`;
-    console.log(`[awGetPhotos-A2] ${url2}`);
-    const res2 = await fetch(`${APPWRITE_ENDPOINT}${url2}`, { headers: awHeaders() });
-    const t2 = await res2.text();
-    console.log(`[awGetPhotos-A2] Status ${res2.status}, preview: ${t2.slice(0, 200)}`);
-    if (res2.ok) {
-      const d2 = JSON.parse(t2);
-      if (d2.documents && d2.documents.length > 0) {
-        console.log(`[awGetPhotos-A2] SUCCESS: ${d2.documents.length} photos`);
-        return d2.documents;
-      }
+    if (!res.ok) {
+      console.log(`[awGetPhotos] Error: ${text.slice(0, 200)}`);
+      return [];
     }
-  } catch (e: any) {
-    console.log(`[awGetPhotos-A2] Error: ${e.message}`);
-  }
 
-  // ============ Approach 3: Fetch All & Filter Client-Side ============
-  try {
-    console.log(`[awGetPhotos-A3] Fetching all photos...`);
-    const url3 = `${basePath}?queries=${encodeURIComponent(JSON.stringify(["limit(500)"]))}`;
-    const res3 = await fetch(`${APPWRITE_ENDPOINT}${url3}`, { headers: awHeaders() });
-    const t3 = await res3.text();
-    console.log(`[awGetPhotos-A3] Status ${res3.status}`);
-    if (res3.ok) {
-      const d3 = JSON.parse(t3);
-      const all = d3.documents || [];
-      console.log(`[awGetPhotos-A3] Total docs: ${all.length}`);
-      console.log(`[awGetPhotos-A3] Sample user_id: ${all[0]?.user_id}`);
-      console.log(`[awGetPhotos-A3] Looking for: ${userId}`);
-      const filtered = all.filter((doc: any) => doc.user_id === userId).slice(0, limit);
-      console.log(`[awGetPhotos-A3] Filtered: ${filtered.length} photos`);
-      if (filtered.length > 0) return filtered;
-    }
+    const data = JSON.parse(text);
+    const docs = data.documents || [];
+    console.log(`[awGetPhotos] Found ${docs.length} photos for user`);
+    return docs;
   } catch (e: any) {
-    console.log(`[awGetPhotos-A3] Error: ${e.message}`);
+    console.log(`[awGetPhotos] Exception: ${e.message}`);
+    return [];
   }
-
-  return [];
 }
 
 async function awDeletePhoto(documentId: string, fileId: string): Promise<void> {
