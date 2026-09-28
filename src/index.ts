@@ -1,5 +1,8 @@
 import { Bot, webhookCallback, InlineKeyboard, InputFile } from "grammy";
 
+// ===========================================
+// HARDCODED CREDENTIALS
+// ===========================================
 const BOT_TOKEN = "8947544923:AAG4Wrh70eqP4ybIfpsiPjWDriLXeMNgrw8";
 const APPWRITE_API_KEY = "standard_3bbe927011c69872ba0e251623c062429b073adb83e47ee9e3edf31131e846683e2cbdcc75064ea65b798803d161ee703f70640040feef0bddf8e1850d098b8542beab30fc7e329fed2a3e1acfbce492223937d186af55dade513639bc3c81256effa1594413ec197982d50b4c506fa0ba3c41ade9cfc06f3285d40f0c9d413d";
 const APPWRITE_ENDPOINT = "https://fra.cloud.appwrite.io/v1";
@@ -53,6 +56,7 @@ async function awLogin(email: string, password: string): Promise<any> {
   let data;
   try { data = JSON.parse(text); } catch (e) { throw new Error(`awLogin: HTML (${res.status})`); }
   if (!res.ok) throw new Error(`awLogin: ${data.message || "Login failed"}`);
+  console.log(`[awLogin] Session $id=${data.$id}, userId=${data.userId}`);
   return { $id: data.userId };
 }
 
@@ -67,6 +71,7 @@ async function awRegister(email: string, password: string): Promise<any> {
   let data;
   try { data = JSON.parse(text); } catch (e) { throw new Error(`awRegister: HTML (${res.status})`); }
   if (!res.ok) throw new Error(`awRegister: ${data.message || "Register failed"}`);
+  console.log(`[awRegister] User $id=${data.$id}`);
   return data;
 }
 
@@ -74,8 +79,10 @@ async function awGetUserPoints(userId: string): Promise<any | null> {
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents/${encodeURIComponent(userId)}`;
   try {
     const data = await awFetch(path, { method: "GET" });
+    console.log(`[awGetUserPoints] Found doc, points=${data.points}`);
     return data;
   } catch (e: any) {
+    console.log(`[awGetUserPoints] Not found: ${e.message}`);
     return null;
   }
 }
@@ -90,6 +97,7 @@ async function awCreateUserPoints(userId: string, chatId: number, invitedBy: str
     invited_by: invitedBy,
   };
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents`;
+  console.log(`[awCreateUserPoints] Creating doc with ID=${userId}`);
   return await awFetch(path, {
     method: "POST",
     body: JSON.stringify({ documentId: userId, data: payload })
@@ -98,55 +106,60 @@ async function awCreateUserPoints(userId: string, chatId: number, invitedBy: str
 
 async function awUpdateUserPoints(userId: string, updates: any): Promise<any> {
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents/${encodeURIComponent(userId)}`;
-  return await awFetch(path, {
+  const result = await awFetch(path, {
     method: "PATCH",
     body: JSON.stringify({ data: updates })
   });
+  console.log(`[awUpdateUserPoints] Updated, new points=${result.points}`);
+  return result;
 }
 
-// ✅ FINAL WORKING VERSION
-// Fetch all (or as many as possible) then Client-side Filter by user_id
+// ✅ FINAL: Paginate through ALL photos, then filter by user_id
 async function awGetPhotos(userId: string, limit: number): Promise<any[]> {
-  let all: any[] = [];
+  const all: any[] = [];
+  let offset = 0;
+  const pageSize = 100;
+  const maxPages = 20; // Safety limit: 2000 photos max
 
-  // Attempt 1: Use queries[]=limit(500) via URLSearchParams
-  try {
-    const u = new URL(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents`);
-    u.searchParams.append("queries[]", "limit(500)");
-    const finalUrl = u.toString().replace(/\+/g, "%20");
-    console.log(`[awGetPhotos-A1] Trying with limit(500)...`);
-    const res = await fetch(finalUrl, { method: "GET", headers: awHeaders() });
-    if (res.ok) {
-      const data = await res.json();
-      all = data.documents || [];
-      console.log(`[awGetPhotos-A1] ✅ Got ${all.length} docs total`);
-    } else {
-      console.log(`[awGetPhotos-A1] Status: ${res.status}`);
-    }
-  } catch (e: any) {
-    console.log(`[awGetPhotos-A1] Error: ${e.message}`);
-  }
+  for (let page = 0; page < maxPages; page++) {
+    const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents?limit=${pageSize}&offset=${offset}`;
 
-  // Attempt 2: fallback — no query (default 25)
-  if (all.length === 0) {
+    console.log(`[awGetPhotos] Page ${page + 1}, offset=${offset}`);
+
     try {
-      console.log(`[awGetPhotos-A2] Trying without query...`);
-      const res = await fetch(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents`, { method: "GET", headers: awHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        all = data.documents || [];
-        console.log(`[awGetPhotos-A2] ✅ Got ${all.length} docs (default limit)`);
+      const res = await fetch(url, { method: "GET", headers: awHeaders() });
+      const text = await res.text();
+
+      if (!res.ok) {
+        console.log(`[awGetPhotos] Page ${page + 1} failed: ${res.status}, ${text.slice(0, 100)}`);
+        break;
       }
+
+      const data = JSON.parse(text);
+      const docs = data.documents || [];
+      console.log(`[awGetPhotos] Page ${page + 1}: got ${docs.length} docs`);
+
+      if (docs.length === 0) break;
+
+      all.push(...docs);
+
+      // If less than pageSize returned, we've reached the end
+      if (docs.length < pageSize) break;
+
+      offset += pageSize;
     } catch (e: any) {
-      console.log(`[awGetPhotos-A2] Error: ${e.message}`);
+      console.log(`[awGetPhotos] Page ${page + 1} exception: ${e.message}`);
+      break;
     }
   }
+
+  console.log(`[awGetPhotos] Total fetched: ${all.length}`);
 
   if (all.length === 0) return [];
 
-  // ✅ Filter by user_id and apply requested limit
+  // Filter by user_id
   const filtered = all.filter((doc: any) => doc.user_id === userId);
-  console.log(`[awGetPhotos] Filtered for user: ${filtered.length} docs, returning ${Math.min(filtered.length, limit)}`);
+  console.log(`[awGetPhotos] ✅ Matched for user: ${filtered.length}, returning ${Math.min(filtered.length, limit)}`);
 
   return filtered.slice(0, limit);
 }
@@ -411,18 +424,18 @@ function setupBot(bot: Bot, env: Env) {
       const userId = ctx.from?.id;
       if (!userId) return;
       try { await ctx.answerCallbackQuery(); } catch (e) {}
-      
+
       const session = await getSession(env, userId);
-      if (!session?.userId) { 
+      if (!session?.userId) {
         try { await ctx.editMessageText("🥺 Session ကုန်သွားပြီ... /start ပြန်ရိုက်ပါ 💕"); } catch (e) {}
-        return; 
+        return;
       }
       const cost = n;
       const up = await awGetUserPoints(session.userId);
       const points = up?.points || 0;
-      if (points < cost) { 
+      if (points < cost) {
         try { await ctx.editMessageText(`🥺 Points မလုံလောက်ဘူးနော် ချစ်ရာ 💔\n\nလိုအပ်: ${cost} Points\nသင့်မှာ: ${points} Points\n\nDaily နှိပ်ပြီး စုလိုက်ရအောင် 🌸`); } catch (e) {}
-        return; 
+        return;
       }
 
       await awUpdateUserPoints(session.userId, { points: points - cost });
@@ -434,7 +447,7 @@ function setupBot(bot: Bot, env: Env) {
         try { await ctx.editMessageText(`🥺 ဓာတ်ပုံ မရှိတော့ဘူးနော် 💔\n\nApp ကနေ ပြန် Backup လုပ်ပေးပါဦး 🌸`); } catch (e) {}
         return;
       }
-      
+
       let sent = 0;
       for (const photo of photos) {
         try {
@@ -443,32 +456,31 @@ function setupBot(bot: Bot, env: Env) {
           await ctx.replyWithPhoto(new InputFile(bytes, "photo.jpg"));
           await awDeletePhoto(photo.$id, photo.file_id);
           sent++;
-          // Delay between photos to avoid Telegram rate limit
           await new Promise(r => setTimeout(r, 500));
         } catch (e: any) {
           console.log(`[sp_${n}] Photo send error: ${e.message}`);
         }
       }
-      
+
       try {
         await ctx.reply(`✨ ကဲ... ${ctx.from?.first_name || "ချစ်ရာ"} 💕\n\nဓာတ်ပုံ ${sent} ပုံ ရောက်လာပြီနော် 🌸\n\n💰 ကုန်သွားတဲ့ Points: ${cost}\n💖 ကျန်တဲ့ Points: ${points - cost}`);
       } catch (e) {}
     });
   }
 
-  bot.callbackQuery("go_menu", async (ctx) => { 
+  bot.callbackQuery("go_menu", async (ctx) => {
     try { await ctx.answerCallbackQuery(); } catch (e) {}
     try { await ctx.editMessageText(MAIN_MENU_TEXT); } catch (e) {}
   });
-  bot.callbackQuery("go_daily", async (ctx) => { 
+  bot.callbackQuery("go_daily", async (ctx) => {
     try { await ctx.answerCallbackQuery(); } catch (e) {}
-    const session = await getSession(env, ctx.from!.id); 
-    if (session) await handleDaily(ctx, env, session); 
+    const session = await getSession(env, ctx.from!.id);
+    if (session) await handleDaily(ctx, env, session);
   });
-  bot.callbackQuery("go_invite", async (ctx) => { 
+  bot.callbackQuery("go_invite", async (ctx) => {
     try { await ctx.answerCallbackQuery(); } catch (e) {}
-    const session = await getSession(env, ctx.from!.id); 
-    if (session) await handleInvite(ctx, env, session, ctx.from?.first_name || "ချစ်ရာ"); 
+    const session = await getSession(env, ctx.from!.id);
+    if (session) await handleInvite(ctx, env, session, ctx.from?.first_name || "ချစ်ရာ");
   });
 
   async function handleInvite(ctx: any, env: Env, session: any, name: string) {
@@ -506,7 +518,7 @@ function setupBot(bot: Bot, env: Env) {
     await ctx.reply("/start ပြန်ရိုက်ပြီး ပြန်ဝင်လို့ရပါပြီ 💕");
   });
 
-  bot.callbackQuery("cancel_logout", async (ctx) => { 
+  bot.callbackQuery("cancel_logout", async (ctx) => {
     try { await ctx.answerCallbackQuery({ text: "💕 ကောင်းလိုက်တာ" }); } catch (e) {}
     try { await ctx.editMessageText(MAIN_MENU_TEXT); } catch (e) {}
   });
