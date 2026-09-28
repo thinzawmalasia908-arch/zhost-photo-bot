@@ -56,7 +56,6 @@ async function awLogin(email: string, password: string): Promise<any> {
   let data;
   try { data = JSON.parse(text); } catch (e) { throw new Error(`awLogin: HTML (${res.status})`); }
   if (!res.ok) throw new Error(`awLogin: ${data.message || "Login failed"}`);
-  console.log(`[awLogin] Session $id=${data.$id}, userId=${data.userId}`);
   return { $id: data.userId };
 }
 
@@ -71,7 +70,6 @@ async function awRegister(email: string, password: string): Promise<any> {
   let data;
   try { data = JSON.parse(text); } catch (e) { throw new Error(`awRegister: HTML (${res.status})`); }
   if (!res.ok) throw new Error(`awRegister: ${data.message || "Register failed"}`);
-  console.log(`[awRegister] User $id=${data.$id}`);
   return data;
 }
 
@@ -79,10 +77,8 @@ async function awGetUserPoints(userId: string): Promise<any | null> {
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents/${encodeURIComponent(userId)}`;
   try {
     const data = await awFetch(path, { method: "GET" });
-    console.log(`[awGetUserPoints] Found doc, points=${data.points}`);
     return data;
   } catch (e: any) {
-    console.log(`[awGetUserPoints] Not found: ${e.message}`);
     return null;
   }
 }
@@ -97,7 +93,6 @@ async function awCreateUserPoints(userId: string, chatId: number, invitedBy: str
     invited_by: invitedBy,
   };
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents`;
-  console.log(`[awCreateUserPoints] Creating doc with ID=${userId}`);
   return await awFetch(path, {
     method: "POST",
     body: JSON.stringify({ documentId: userId, data: payload })
@@ -106,51 +101,118 @@ async function awCreateUserPoints(userId: string, chatId: number, invitedBy: str
 
 async function awUpdateUserPoints(userId: string, updates: any): Promise<any> {
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents/${encodeURIComponent(userId)}`;
-  const result = await awFetch(path, {
+  return await awFetch(path, {
     method: "PATCH",
     body: JSON.stringify({ data: updates })
   });
-  console.log(`[awUpdateUserPoints] Updated, new points=${result.points}`);
-  return result;
 }
 
-// ⚠️ CRITICAL FIX: URLSearchParams uses '+' for space — Appwrite needs '%20'
+// ⚠️ DIAGNOSTIC: Try 8 different formats to find what Appwrite 2.3.0 accepts
 async function awGetPhotos(userId: string, limit: number): Promise<any[]> {
-  const url = new URL(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents`);
-  url.searchParams.append("queries[]", `equal("user_id", ["${userId}"])`);
-  url.searchParams.append("queries[]", `limit(${limit})`);
+  const formats: { name: string; url: string }[] = [];
 
-  // ⚠️ KEY FIX: Replace '+' with '%20'
-  const finalUrl = url.toString().replace(/\+/g, "%20");
+  // F1: /tables/.../rows with queries[]
+  formats.push({
+    name: "F1-tables-rows",
+    url: `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows?queries%5B%5D=${encodeURIComponent(`equal("user_id", ["${userId}"])`)}&queries%5B%5D=${encodeURIComponent(`limit(${limit})`)}`
+  });
 
-  console.log(`[awGetPhotos] Final URL: ${finalUrl}`);
+  // F2: /tables/.../rows no query
+  formats.push({
+    name: "F2-tables-noquery",
+    url: `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows`
+  });
 
-  try {
-    const res = await fetch(finalUrl, {
-      method: "GET",
-      headers: awHeaders()
-    });
-    const text = await res.text();
-    console.log(`[awGetPhotos] Status: ${res.status}, preview: ${text.slice(0, 200)}`);
+  // F3: /documents no query
+  formats.push({
+    name: "F3-docs-noquery",
+    url: `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents`
+  });
 
-    if (!res.ok) {
-      console.log(`[awGetPhotos] Error: ${text.slice(0, 200)}`);
-      return [];
+  // F4: /documents?queries[]=limit(500)
+  formats.push({
+    name: "F4-docs-limit",
+    url: `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents?queries%5B%5D=${encodeURIComponent("limit(500)")}`
+  });
+
+  // F5: /documents?queries=JSON
+  formats.push({
+    name: "F5-docs-jsonqueries",
+    url: `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents?queries=${encodeURIComponent(JSON.stringify([`equal("user_id", ["${userId}"])`, `limit(${limit})`]))}`
+  });
+
+  // F6: /documents?queries[]=limit(500) via URLSearchParams
+  const u6 = new URL(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents`);
+  u6.searchParams.append("queries[]", "limit(500)");
+  formats.push({
+    name: "F6-docs-limit-sp",
+    url: u6.toString().replace(/\+/g, "%20")
+  });
+
+  // F7: /documents?queries[]=equal without value array
+  formats.push({
+    name: "F7-docs-equal-nobracket",
+    url: `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents?queries%5B%5D=${encodeURIComponent(`equal("user_id", "${userId}")`)}`
+  });
+
+  // F8: /documents?queries[]=equal with URLSearchParams (all)
+  const u8 = new URL(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents`);
+  u8.searchParams.append("queries[]", `equal("user_id", ["${userId}"])`);
+  formats.push({
+    name: "F8-docs-sp-all",
+    url: u8.toString().replace(/\+/g, "%20")
+  });
+
+  // F9: /tables/.../rows?queries[]=limit(500)
+  formats.push({
+    name: "F9-tables-limit",
+    url: `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows?queries%5B%5D=${encodeURIComponent("limit(500)")}`
+  });
+
+  // F10: /tables/.../rows?queries[]=equal with URLSearchParams
+  const u10 = new URL(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows`);
+  u10.searchParams.append("queries[]", `equal("user_id", ["${userId}"])`);
+  u10.searchParams.append("queries[]", `limit(${limit})`);
+  formats.push({
+    name: "F10-tables-sp",
+    url: u10.toString().replace(/\+/g, "%20")
+  });
+
+  for (const fmt of formats) {
+    console.log(`[awGetPhotos-${fmt.name}] Trying...`);
+    try {
+      const res = await fetch(fmt.url, { method: "GET", headers: awHeaders() });
+      const text = await res.text();
+      console.log(`[awGetPhotos-${fmt.name}] Status: ${res.status}, preview: ${text.slice(0, 120)}`);
+
+      if (res.ok) {
+        const data = JSON.parse(text);
+        const docs = data.documents || data.rows || [];
+        console.log(`[awGetPhotos-${fmt.name}] ✅ SUCCESS — Found ${docs.length} docs`);
+        if (docs.length > 0) {
+          console.log(`[awGetPhotos-${fmt.name}] Sample user_id: "${docs[0]?.user_id}"`);
+          return docs;
+        }
+      } else {
+        console.log(`[awGetPhotos-${fmt.name}] ❌ ${res.status}`);
+      }
+    } catch (e: any) {
+      console.log(`[awGetPhotos-${fmt.name}] Exception: ${e.message}`);
     }
-
-    const data = JSON.parse(text);
-    const docs = data.documents || [];
-    console.log(`[awGetPhotos] Found ${docs.length} photos for user`);
-    return docs;
-  } catch (e: any) {
-    console.log(`[awGetPhotos] Exception: ${e.message}`);
-    return [];
   }
+
+  console.log(`[awGetPhotos] ⚠️ All formats failed`);
+  return [];
 }
 
 async function awDeletePhoto(documentId: string, fileId: string): Promise<void> {
   try {
     await fetch(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents/${documentId}`, {
+      method: "DELETE", headers: awHeaders()
+    });
+  } catch (e) {}
+  try {
+    await fetch(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows/${documentId}`, {
       method: "DELETE", headers: awHeaders()
     });
   } catch (e) {}
@@ -253,9 +315,6 @@ function setupBot(bot: Bot, env: Env) {
       try {
         const photos = await awGetPhotos(session.userId, 50);
         info += `\n📸 Photos: ${photos.length} ပုံ\n`;
-        if (photos.length > 0) {
-          info += `\nFirst photo user_id:\n${photos[0].user_id}\n`;
-        }
       } catch (e: any) {
         info += `\n❌ Photos error: ${e.message}\n`;
       }
