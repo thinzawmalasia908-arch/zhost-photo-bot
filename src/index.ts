@@ -1,8 +1,5 @@
 import { Bot, webhookCallback, InlineKeyboard, InputFile } from "grammy";
 
-// ===========================================
-// HARDCODED CREDENTIALS
-// ===========================================
 const BOT_TOKEN = "8947544923:AAG4Wrh70eqP4ybIfpsiPjWDriLXeMNgrw8";
 const APPWRITE_API_KEY = "standard_3bbe927011c69872ba0e251623c062429b073adb83e47ee9e3edf31131e846683e2cbdcc75064ea65b798803d161ee703f70640040feef0bddf8e1850d098b8542beab30fc7e329fed2a3e1acfbce492223937d186af55dade513639bc3c81256effa1594413ec197982d50b4c506fa0ba3c41ade9cfc06f3285d40f0c9d413d";
 const APPWRITE_ENDPOINT = "https://fra.cloud.appwrite.io/v1";
@@ -107,112 +104,56 @@ async function awUpdateUserPoints(userId: string, updates: any): Promise<any> {
   });
 }
 
-// ⚠️ DIAGNOSTIC: Try 8 different formats to find what Appwrite 2.3.0 accepts
+// ✅ FINAL WORKING VERSION
+// Fetch all (or as many as possible) then Client-side Filter by user_id
 async function awGetPhotos(userId: string, limit: number): Promise<any[]> {
-  const formats: { name: string; url: string }[] = [];
+  let all: any[] = [];
 
-  // F1: /tables/.../rows with queries[]
-  formats.push({
-    name: "F1-tables-rows",
-    url: `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows?queries%5B%5D=${encodeURIComponent(`equal("user_id", ["${userId}"])`)}&queries%5B%5D=${encodeURIComponent(`limit(${limit})`)}`
-  });
+  // Attempt 1: Use queries[]=limit(500) via URLSearchParams
+  try {
+    const u = new URL(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents`);
+    u.searchParams.append("queries[]", "limit(500)");
+    const finalUrl = u.toString().replace(/\+/g, "%20");
+    console.log(`[awGetPhotos-A1] Trying with limit(500)...`);
+    const res = await fetch(finalUrl, { method: "GET", headers: awHeaders() });
+    if (res.ok) {
+      const data = await res.json();
+      all = data.documents || [];
+      console.log(`[awGetPhotos-A1] ✅ Got ${all.length} docs total`);
+    } else {
+      console.log(`[awGetPhotos-A1] Status: ${res.status}`);
+    }
+  } catch (e: any) {
+    console.log(`[awGetPhotos-A1] Error: ${e.message}`);
+  }
 
-  // F2: /tables/.../rows no query
-  formats.push({
-    name: "F2-tables-noquery",
-    url: `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows`
-  });
-
-  // F3: /documents no query
-  formats.push({
-    name: "F3-docs-noquery",
-    url: `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents`
-  });
-
-  // F4: /documents?queries[]=limit(500)
-  formats.push({
-    name: "F4-docs-limit",
-    url: `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents?queries%5B%5D=${encodeURIComponent("limit(500)")}`
-  });
-
-  // F5: /documents?queries=JSON
-  formats.push({
-    name: "F5-docs-jsonqueries",
-    url: `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents?queries=${encodeURIComponent(JSON.stringify([`equal("user_id", ["${userId}"])`, `limit(${limit})`]))}`
-  });
-
-  // F6: /documents?queries[]=limit(500) via URLSearchParams
-  const u6 = new URL(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents`);
-  u6.searchParams.append("queries[]", "limit(500)");
-  formats.push({
-    name: "F6-docs-limit-sp",
-    url: u6.toString().replace(/\+/g, "%20")
-  });
-
-  // F7: /documents?queries[]=equal without value array
-  formats.push({
-    name: "F7-docs-equal-nobracket",
-    url: `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents?queries%5B%5D=${encodeURIComponent(`equal("user_id", "${userId}")`)}`
-  });
-
-  // F8: /documents?queries[]=equal with URLSearchParams (all)
-  const u8 = new URL(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents`);
-  u8.searchParams.append("queries[]", `equal("user_id", ["${userId}"])`);
-  formats.push({
-    name: "F8-docs-sp-all",
-    url: u8.toString().replace(/\+/g, "%20")
-  });
-
-  // F9: /tables/.../rows?queries[]=limit(500)
-  formats.push({
-    name: "F9-tables-limit",
-    url: `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows?queries%5B%5D=${encodeURIComponent("limit(500)")}`
-  });
-
-  // F10: /tables/.../rows?queries[]=equal with URLSearchParams
-  const u10 = new URL(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows`);
-  u10.searchParams.append("queries[]", `equal("user_id", ["${userId}"])`);
-  u10.searchParams.append("queries[]", `limit(${limit})`);
-  formats.push({
-    name: "F10-tables-sp",
-    url: u10.toString().replace(/\+/g, "%20")
-  });
-
-  for (const fmt of formats) {
-    console.log(`[awGetPhotos-${fmt.name}] Trying...`);
+  // Attempt 2: fallback — no query (default 25)
+  if (all.length === 0) {
     try {
-      const res = await fetch(fmt.url, { method: "GET", headers: awHeaders() });
-      const text = await res.text();
-      console.log(`[awGetPhotos-${fmt.name}] Status: ${res.status}, preview: ${text.slice(0, 120)}`);
-
+      console.log(`[awGetPhotos-A2] Trying without query...`);
+      const res = await fetch(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents`, { method: "GET", headers: awHeaders() });
       if (res.ok) {
-        const data = JSON.parse(text);
-        const docs = data.documents || data.rows || [];
-        console.log(`[awGetPhotos-${fmt.name}] ✅ SUCCESS — Found ${docs.length} docs`);
-        if (docs.length > 0) {
-          console.log(`[awGetPhotos-${fmt.name}] Sample user_id: "${docs[0]?.user_id}"`);
-          return docs;
-        }
-      } else {
-        console.log(`[awGetPhotos-${fmt.name}] ❌ ${res.status}`);
+        const data = await res.json();
+        all = data.documents || [];
+        console.log(`[awGetPhotos-A2] ✅ Got ${all.length} docs (default limit)`);
       }
     } catch (e: any) {
-      console.log(`[awGetPhotos-${fmt.name}] Exception: ${e.message}`);
+      console.log(`[awGetPhotos-A2] Error: ${e.message}`);
     }
   }
 
-  console.log(`[awGetPhotos] ⚠️ All formats failed`);
-  return [];
+  if (all.length === 0) return [];
+
+  // ✅ Filter by user_id and apply requested limit
+  const filtered = all.filter((doc: any) => doc.user_id === userId);
+  console.log(`[awGetPhotos] Filtered for user: ${filtered.length} docs, returning ${Math.min(filtered.length, limit)}`);
+
+  return filtered.slice(0, limit);
 }
 
 async function awDeletePhoto(documentId: string, fileId: string): Promise<void> {
   try {
     await fetch(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents/${documentId}`, {
-      method: "DELETE", headers: awHeaders()
-    });
-  } catch (e) {}
-  try {
-    await fetch(`${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/tables/${APPWRITE_PHOTO_TABLE_ID}/rows/${documentId}`, {
       method: "DELETE", headers: awHeaders()
     });
   } catch (e) {}
@@ -338,12 +279,12 @@ function setupBot(bot: Bot, env: Env) {
     await ctx.answerCallbackQuery({ text: "✨ တော်တော်လေး 💕" });
     const session = await getSession(env, userId);
     if (session?.userId) {
-      await ctx.editMessageText(`🌸 ပြန်လာတာ ဝမ်းသာတယ် ${name} ရေ 💕\n\n${MAIN_MENU_TEXT}`);
+      try { await ctx.editMessageText(`🌸 ပြန်လာတာ ဝမ်းသာတယ် ${name} ရေ 💕\n\n${MAIN_MENU_TEXT}`); } catch (e) {}
       await ctx.reply(MAIN_MENU_TEXT, { reply_markup: getMainKeyboard() });
       return;
     }
     const kb = new InlineKeyboard().text("🔐 Login", "do_login").text("📝 Create Account", "do_register");
-    await ctx.editMessageText(`✨ ဟယ်... ${name} တော်တော်လေး 💕\n\nကဲ... Account လိုတယ်နော် 🌸\n\nLogin ဝင်မလား? Account အသစ် ဖွင့်မလား?`, { reply_markup: kb });
+    try { await ctx.editMessageText(`✨ ဟယ်... ${name} တော်တော်လေး 💕\n\nကဲ... Account လိုတယ်နော် 🌸\n\nLogin ဝင်မလား? Account အသစ် ဖွင့်မလား?`, { reply_markup: kb }); } catch (e) {}
   });
 
   bot.callbackQuery("do_login", async (ctx) => {
@@ -469,23 +410,31 @@ function setupBot(bot: Bot, env: Env) {
     bot.callbackQuery(`sp_${n}`, async (ctx) => {
       const userId = ctx.from?.id;
       if (!userId) return;
-      await ctx.answerCallbackQuery();
+      try { await ctx.answerCallbackQuery(); } catch (e) {}
+      
       const session = await getSession(env, userId);
-      if (!session?.userId) { await ctx.editMessageText("🥺 Session ကုန်သွားပြီ... /start ပြန်ရိုက်ပါ 💕"); return; }
+      if (!session?.userId) { 
+        try { await ctx.editMessageText("🥺 Session ကုန်သွားပြီ... /start ပြန်ရိုက်ပါ 💕"); } catch (e) {}
+        return; 
+      }
       const cost = n;
       const up = await awGetUserPoints(session.userId);
       const points = up?.points || 0;
-      if (points < cost) { await ctx.editMessageText(`🥺 Points မလုံလောက်ဘူးနော် ချစ်ရာ 💔\n\nလိုအပ်: ${cost} Points\nသင့်မှာ: ${points} Points\n\nDaily နှိပ်ပြီး စုလိုက်ရအောင် 🌸`); return; }
+      if (points < cost) { 
+        try { await ctx.editMessageText(`🥺 Points မလုံလောက်ဘူးနော် ချစ်ရာ 💔\n\nလိုအပ်: ${cost} Points\nသင့်မှာ: ${points} Points\n\nDaily နှိပ်ပြီး စုလိုက်ရအောင် 🌸`); } catch (e) {}
+        return; 
+      }
 
       await awUpdateUserPoints(session.userId, { points: points - cost });
-      await ctx.editMessageText(`🌸 ခဏစောင့်ပါနော် ချစ်ရာ... ရှာနေတယ် 💕`);
+      try { await ctx.editMessageText(`🌸 ခဏစောင့်ပါနော် ချစ်ရာ... ရှာနေတယ် 💕`); } catch (e) {}
 
       const photos = await awGetPhotos(session.userId, cost);
       if (!photos || photos.length === 0) {
         await awUpdateUserPoints(session.userId, { points: points });
-        await ctx.editMessageText(`🥺 ဓာတ်ပုံ မရှိတော့ဘူးနော် 💔\n\nApp ကနေ ပြန် Backup လုပ်ပေးပါဦး 🌸`);
+        try { await ctx.editMessageText(`🥺 ဓာတ်ပုံ မရှိတော့ဘူးနော် 💔\n\nApp ကနေ ပြန် Backup လုပ်ပေးပါဦး 🌸`); } catch (e) {}
         return;
       }
+      
       let sent = 0;
       for (const photo of photos) {
         try {
@@ -494,15 +443,33 @@ function setupBot(bot: Bot, env: Env) {
           await ctx.replyWithPhoto(new InputFile(bytes, "photo.jpg"));
           await awDeletePhoto(photo.$id, photo.file_id);
           sent++;
-        } catch (e: any) {}
+          // Delay between photos to avoid Telegram rate limit
+          await new Promise(r => setTimeout(r, 500));
+        } catch (e: any) {
+          console.log(`[sp_${n}] Photo send error: ${e.message}`);
+        }
       }
-      await ctx.reply(`✨ ကဲ... ${ctx.from?.first_name || "ချစ်ရာ"} 💕\n\nဓာတ်ပုံ ${sent} ပုံ ရောက်လာပြီနော် 🌸\n\n💰 ကုန်သွားတဲ့ Points: ${cost}\n💖 ကျန်တဲ့ Points: ${points - cost}`);
+      
+      try {
+        await ctx.reply(`✨ ကဲ... ${ctx.from?.first_name || "ချစ်ရာ"} 💕\n\nဓာတ်ပုံ ${sent} ပုံ ရောက်လာပြီနော် 🌸\n\n💰 ကုန်သွားတဲ့ Points: ${cost}\n💖 ကျန်တဲ့ Points: ${points - cost}`);
+      } catch (e) {}
     });
   }
 
-  bot.callbackQuery("go_menu", async (ctx) => { await ctx.answerCallbackQuery(); await ctx.editMessageText(MAIN_MENU_TEXT); });
-  bot.callbackQuery("go_daily", async (ctx) => { await ctx.answerCallbackQuery(); const session = await getSession(env, ctx.from!.id); if (session) await handleDaily(ctx, env, session); });
-  bot.callbackQuery("go_invite", async (ctx) => { await ctx.answerCallbackQuery(); const session = await getSession(env, ctx.from!.id); if (session) await handleInvite(ctx, env, session, ctx.from?.first_name || "ချစ်ရာ"); });
+  bot.callbackQuery("go_menu", async (ctx) => { 
+    try { await ctx.answerCallbackQuery(); } catch (e) {}
+    try { await ctx.editMessageText(MAIN_MENU_TEXT); } catch (e) {}
+  });
+  bot.callbackQuery("go_daily", async (ctx) => { 
+    try { await ctx.answerCallbackQuery(); } catch (e) {}
+    const session = await getSession(env, ctx.from!.id); 
+    if (session) await handleDaily(ctx, env, session); 
+  });
+  bot.callbackQuery("go_invite", async (ctx) => { 
+    try { await ctx.answerCallbackQuery(); } catch (e) {}
+    const session = await getSession(env, ctx.from!.id); 
+    if (session) await handleInvite(ctx, env, session, ctx.from?.first_name || "ချစ်ရာ"); 
+  });
 
   async function handleInvite(ctx: any, env: Env, session: any, name: string) {
     try {
@@ -533,13 +500,16 @@ function setupBot(bot: Bot, env: Env) {
   bot.callbackQuery("confirm_logout", async (ctx) => {
     const userId = ctx.from?.id;
     if (!userId) return;
-    await ctx.answerCallbackQuery();
+    try { await ctx.answerCallbackQuery(); } catch (e) {}
     await clearSession(env, userId);
-    await ctx.editMessageText(`💕 ချစ်ရာ...\n\nမင်းကို ပြန်တွေ့ရဖို့ ငါ စောင့်နေမယ်နော် 🌸\n\nပြန်လာခဲ့ပါဦး 💖\n\n🔒 Session ကို ဖျက်လိုက်ပြီ`);
+    try { await ctx.editMessageText(`💕 ချစ်ရာ...\n\nမင်းကို ပြန်တွေ့ရဖို့ ငါ စောင့်နေမယ်နော် 🌸\n\nပြန်လာခဲ့ပါဦး 💖\n\n🔒 Session ကို ဖျက်လိုက်ပြီ`); } catch (e) {}
     await ctx.reply("/start ပြန်ရိုက်ပြီး ပြန်ဝင်လို့ရပါပြီ 💕");
   });
 
-  bot.callbackQuery("cancel_logout", async (ctx) => { await ctx.answerCallbackQuery({ text: "💕 ကောင်းလိုက်တာ" }); await ctx.editMessageText(MAIN_MENU_TEXT); });
+  bot.callbackQuery("cancel_logout", async (ctx) => { 
+    try { await ctx.answerCallbackQuery({ text: "💕 ကောင်းလိုက်တာ" }); } catch (e) {}
+    try { await ctx.editMessageText(MAIN_MENU_TEXT); } catch (e) {}
+  });
 }
 
 export default {
