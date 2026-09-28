@@ -1,8 +1,5 @@
 import { Bot, webhookCallback, InlineKeyboard, InputFile } from "grammy";
 
-// ===========================================
-// HARDCODED CREDENTIALS
-// ===========================================
 const BOT_TOKEN = "8947544923:AAG4Wrh70eqP4ybIfpsiPjWDriLXeMNgrw8";
 const APPWRITE_API_KEY = "standard_3bbe927011c69872ba0e251623c062429b073adb83e47ee9e3edf31131e846683e2cbdcc75064ea65b798803d161ee703f70640040feef0bddf8e1850d098b8542beab30fc7e329fed2a3e1acfbce492223937d186af55dade513639bc3c81256effa1594413ec197982d50b4c506fa0ba3c41ade9cfc06f3285d40f0c9d413d";
 const APPWRITE_ENDPOINT = "https://fra.cloud.appwrite.io/v1";
@@ -21,17 +18,22 @@ export interface Env {
   [key: string]: any;
 }
 
-function awHeaders(): Headers {
+// ⚠️ FIX: Different headers for GET vs POST
+function awHeaders(forGet: boolean = false): Headers {
   const headers = new Headers();
-  headers.set("Content-Type", "application/json");
+  if (!forGet) {
+    headers.set("Content-Type", "application/json");
+  }
   headers.set("X-Appwrite-Project", APPWRITE_PROJECT_ID);
   headers.set("X-Appwrite-Key", APPWRITE_API_KEY.trim());
+  headers.set("X-Appwrite-Response-Format", "1.6.0");
   return headers;
 }
 
 async function awFetch(path: string, options: RequestInit = {}): Promise<any> {
   const url = `${APPWRITE_ENDPOINT}${path}`;
-  const fetchHeaders = awHeaders();
+  const isGet = !options.method || options.method === "GET";
+  const fetchHeaders = awHeaders(isGet);
   if (options.headers) {
     new Headers(options.headers).forEach((value, key) => fetchHeaders.set(key, value));
   }
@@ -56,7 +58,6 @@ async function awLogin(email: string, password: string): Promise<any> {
   let data;
   try { data = JSON.parse(text); } catch (e) { throw new Error(`awLogin: HTML (${res.status})`); }
   if (!res.ok) throw new Error(`awLogin: ${data.message || "Login failed"}`);
-  console.log(`[awLogin] Session $id=${data.$id}, userId=${data.userId}`);
   return { $id: data.userId };
 }
 
@@ -71,7 +72,6 @@ async function awRegister(email: string, password: string): Promise<any> {
   let data;
   try { data = JSON.parse(text); } catch (e) { throw new Error(`awRegister: HTML (${res.status})`); }
   if (!res.ok) throw new Error(`awRegister: ${data.message || "Register failed"}`);
-  console.log(`[awRegister] User $id=${data.$id}`);
   return data;
 }
 
@@ -79,10 +79,8 @@ async function awGetUserPoints(userId: string): Promise<any | null> {
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents/${encodeURIComponent(userId)}`;
   try {
     const data = await awFetch(path, { method: "GET" });
-    console.log(`[awGetUserPoints] Found doc, points=${data.points}`);
     return data;
   } catch (e: any) {
-    console.log(`[awGetUserPoints] Not found: ${e.message}`);
     return null;
   }
 }
@@ -97,7 +95,6 @@ async function awCreateUserPoints(userId: string, chatId: number, invitedBy: str
     invited_by: invitedBy,
   };
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents`;
-  console.log(`[awCreateUserPoints] Creating doc with ID=${userId}`);
   return await awFetch(path, {
     method: "POST",
     body: JSON.stringify({ documentId: userId, data: payload })
@@ -106,32 +103,29 @@ async function awCreateUserPoints(userId: string, chatId: number, invitedBy: str
 
 async function awUpdateUserPoints(userId: string, updates: any): Promise<any> {
   const path = `/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_USER_POINTS_TABLE_ID}/documents/${encodeURIComponent(userId)}`;
-  const result = await awFetch(path, {
+  return await awFetch(path, {
     method: "PATCH",
     body: JSON.stringify({ data: updates })
   });
-  console.log(`[awUpdateUserPoints] Updated, new points=${result.points}`);
-  return result;
 }
 
-// ✅ FINAL: Paginate through ALL photos, then filter by user_id
+// ⚠️ FIXED: Use awHeaders(true) for GET to avoid default 25 limit
 async function awGetPhotos(userId: string, limit: number): Promise<any[]> {
   const all: any[] = [];
   let offset = 0;
   const pageSize = 100;
-  const maxPages = 20; // Safety limit: 2000 photos max
+  const maxPages = 20;
 
   for (let page = 0; page < maxPages; page++) {
     const url = `${APPWRITE_ENDPOINT}/databases/${APPWRITE_DATABASE_ID}/collections/${APPWRITE_PHOTO_TABLE_ID}/documents?limit=${pageSize}&offset=${offset}`;
-
     console.log(`[awGetPhotos] Page ${page + 1}, offset=${offset}`);
 
     try {
-      const res = await fetch(url, { method: "GET", headers: awHeaders() });
+      const res = await fetch(url, { method: "GET", headers: awHeaders(true) });
       const text = await res.text();
 
       if (!res.ok) {
-        console.log(`[awGetPhotos] Page ${page + 1} failed: ${res.status}, ${text.slice(0, 100)}`);
+        console.log(`[awGetPhotos] Page ${page + 1} failed: ${res.status}`);
         break;
       }
 
@@ -143,7 +137,6 @@ async function awGetPhotos(userId: string, limit: number): Promise<any[]> {
 
       all.push(...docs);
 
-      // If less than pageSize returned, we've reached the end
       if (docs.length < pageSize) break;
 
       offset += pageSize;
@@ -157,7 +150,6 @@ async function awGetPhotos(userId: string, limit: number): Promise<any[]> {
 
   if (all.length === 0) return [];
 
-  // Filter by user_id
   const filtered = all.filter((doc: any) => doc.user_id === userId);
   console.log(`[awGetPhotos] ✅ Matched for user: ${filtered.length}, returning ${Math.min(filtered.length, limit)}`);
 
@@ -180,10 +172,7 @@ async function awDeletePhoto(documentId: string, fileId: string): Promise<void> 
 async function awGetPhotoBytes(fileId: string): Promise<Uint8Array | null> {
   try {
     const url = `${APPWRITE_ENDPOINT}/storage/buckets/${APPWRITE_BUCKET_ID}/files/${fileId}/view`;
-    const headers = new Headers();
-    headers.set("X-Appwrite-Project", APPWRITE_PROJECT_ID);
-    headers.set("X-Appwrite-Key", APPWRITE_API_KEY.trim());
-    const res = await fetch(url, { headers });
+    const res = await fetch(url, { headers: awHeaders(true) });
     if (!res.ok) return null;
     return new Uint8Array(await res.arrayBuffer());
   } catch (e) { return null; }
