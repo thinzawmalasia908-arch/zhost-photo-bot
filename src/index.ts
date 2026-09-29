@@ -89,7 +89,6 @@ async function awRegister(email: string, password: string): Promise<{ id: string
 
 // ============ User Points ============
 
-// ✅ FIXED — document ID = userId တိုက်ရိုက် get
 async function awGetUserPoints(env: Env, userId: string): Promise<any | null> {
   try {
     const res = await awFetch(
@@ -132,7 +131,6 @@ async function awUpdateUserPoints(env: Env, docId: string, updates: any): Promis
 
 // ============ Photos ============
 
-// ✅ FIXED — query မလုပ်ဘဲ code ထဲ filter
 async function awGetPhotos(env: Env, userId: string, limit: number): Promise<any[]> {
   try {
     const res = await awFetch(
@@ -142,12 +140,8 @@ async function awGetPhotos(env: Env, userId: string, limit: number): Promise<any
     );
     const all = res?.documents || [];
     const mine = all.filter((d: any) => d.user_id === userId);
-    console.log(`[awGetPhotos] total=${all.length}, mine=${mine.length}`);
     return mine.slice(0, limit);
-  } catch (e) {
-    console.log("awGetPhotos error", e);
-    return [];
-  }
+  } catch { return []; }
 }
 
 async function awDeletePhoto(env: Env, docId: string, fileId: string): Promise<void> {
@@ -187,7 +181,7 @@ const BTN_DAILY = "🎁 Daily ယူမယ်";
 const BTN_SHOW = "🖼️ Point နဲ့ ဓာတ်ပုံလဲမယ်";
 const BTN_INVITE = "💌 သူငယ်ချင်းဖိတ်မယ်";
 const BTN_PROFILE = "👤 Profile လေး";
-const BTN_LOGOUT = "🚪 အကောင့်ထွက်မယ်နော်";
+const BTN_LOGOUT = "🚪 အကောင့်ထွက်မယ်";
 
 const MAIN_MENU = "ဟယ်လို... ဘာလေးလုပ်ပေးရမလဲရှင် 🌸 ပြောပါနော် 🥰";
 
@@ -252,7 +246,7 @@ function setupBot(bot: Bot, env: Env) {
 
     const kb = new InlineKeyboard()
       .text("🔐 အကောင့်ဝင်မယ်", "do_login")
-      .text("📝 အကောင့်အသစ်ဖွင့်မယ်", "do_register");
+      .text("📝 အသစ်ဖွင့်မယ်", "do_register");
     await ctx.reply(
       `ကဲ... ${name} ရေ၊ Bot လေးကို သုံးဖို့ App ထဲမှာ ဖွင့်ထားတဲ့ အကောင့်လေး အရင်လိုတယ်နော် 🌸\n\nအကောင့် ဝင်မလား? အသစ်ဖွင့်မလားရှင်?`,
       { reply_markup: kb }
@@ -515,15 +509,27 @@ function setupBot(bot: Bot, env: Env) {
   });
 }
 
+// ==================== FETCH HANDLER ====================
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
     if (url.pathname === "/") {
       return new Response("Zhost Photo Bot (Appwrite) OK", {
         status: 200,
         headers: { "Content-Type": "text/plain; charset=utf-8" },
       });
     }
+
+    // ✅ CLEANUP TOOL
+    if (url.pathname === "/cleanup") {
+      return new Response(CLEANUP_HTML, {
+        status: 200,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
+
     if (url.pathname === "/webhook") {
       try {
         const bot = getBot(env);
@@ -536,3 +542,68 @@ export default {
     return new Response("Not Found", { status: 404 });
   },
 };
+
+// ==================== CLEANUP HTML ====================
+
+const CLEANUP_HTML = `<!DOCTYPE html>
+<html lang="my">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zhost Cleanup</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;padding:20px}
+.c{background:#fff;border-radius:20px;padding:25px;max-width:500px;margin:0 auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+h1{font-size:20px;color:#333;text-align:center;margin-bottom:6px}
+.s{font-size:12px;color:#888;text-align:center;margin-bottom:20px}
+.w{background:#fff3cd;border-left:4px solid #ffc107;padding:12px;border-radius:8px;font-size:13px;color:#856404;margin-bottom:18px;line-height:1.6}
+.i{background:#e3f2fd;padding:10px;border-radius:8px;font-size:11px;color:#0d47a1;font-family:monospace;margin-bottom:15px;word-break:break-all;line-height:1.7}
+label{display:block;font-size:13px;color:#555;margin-bottom:8px;font-weight:600}
+input{width:100%;padding:13px;border:2px solid #e0e0e0;border-radius:12px;font-size:13px;font-family:monospace;margin-bottom:12px}
+input:focus{outline:none;border-color:#667eea}
+button{width:100%;padding:15px;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px}
+button:active{transform:scale(.98)}
+button:disabled{opacity:.5}
+.br{background:linear-gradient(135deg,#ff4757,#c0392b);color:#fff}
+.bg{background:#f0f0f0;color:#555}
+.o{margin-top:15px;padding:15px;border-radius:12px;font-size:12px;line-height:1.7;white-space:pre-wrap;word-break:break-word;font-family:monospace;max-height:400px;overflow-y:auto;display:none}
+.o.show{display:block}
+.o.info{background:#e3f2fd;color:#0d47a1}
+.o.ok{background:#e8f5e9;color:#1b5e20}
+.o.err{background:#ffebee;color:#b71c1c}
+</style>
+</head>
+<body>
+<div class="c">
+<h1>🗑️ Zhost Cleanup</h1>
+<p class="s">Data Cleanup Tool</p>
+<div class="i" id="env"></div>
+<div class="w">⚠️ <strong>သတိ:</strong> Data အကုန် ဖျက်မယ်။ Table structure ကို မဖျက်ပါ။</div>
+<label>🔑 Appwrite API Key</label>
+<input type="password" id="key" placeholder="standard_xxx...">
+<button class="bg" id="b1" onclick="test()">🔍 Connection စမ်း</button>
+<button class="br" id="b2" onclick="run()">🗑️ အကုန် ဖျက်မယ်</button>
+<div class="o" id="out"></div>
+</div>
+<script>
+var EP="https://fra.cloud.appwrite.io/v1";
+var PJ="6ab8a17c0009e545239a";
+var DB="6ab8a2dd002493abffc1";
+var PT="6ab8a3170023949dc624";
+var UT="user_points";
+var BK="6ab8a9a20014b126f169";
+var total=0;
+document.getElementById("env").innerHTML="Protocol: <b>"+location.protocol+"</b><br>Host: <b>"+location.host+"</b><br>Endpoint: <b>"+EP+"</b>";
+var out=document.getElementById("out");
+function log(s){out.innerHTML+=s+"\\n";out.scrollTop=out.scrollHeight}
+function show(m,t){out.className="o show "+t;out.innerHTML=m}
+function dis(b){document.getElementById("b1").disabled=b;document.getElementById("b2").disabled=b}
+async function api(m,p,k){try{var r=await fetch(EP+p,{method:m,headers:{"X-Appwrite-Project":PJ,"X-Appwrite-Key":k,"Content-Type":"application/json"}});var t=await r.text();var d=null;try{d=t?JSON.parse(t):null}catch(e){d=t}return{ok:r.ok,status:r.status,st:r.statusText,data:d}}catch(e){return{ok:false,status:0,err:e.name+": "+e.message}}}
+async function test(){var k=document.getElementById("key").value.trim();if(!k){show("❌ API Key ထည့်ပါ","err");return}dis(true);show("⏳ စမ်းနေတယ်...","info");var r=await api("GET","/databases/"+DB,k);dis(false);if(r.ok){show("✅ OK!\\n\\nStatus: "+r.status+"\\nURL: "+EP+"/databases/"+DB,"ok")}else if(r.status===0){show("❌ Network Error\\n\\n"+r.err+"\\n\\n💡 ဖြစ်နိုင်တာ:\\n① Appwrite Platform မထည့်ရသေး\\n② Network block\\n③ Endpoint မှား","err")}else{show("❌ HTTP "+r.status+" "+r.st+"\\n\\n"+JSON.stringify(r.data,null,2).slice(0,600),"err")}}
+async function delDocs(k,db,c){var n=0;for(var i=0;i<100;i++){var r=await api("GET","/databases/"+db+"/collections/"+c+"/documents?limit=100",k);if(!r.ok){log("❌ List ["+r.status+"]");return n}var ds=(r.data&&r.data.documents)||[];if(!ds.length)break;for(var j=0;j<ds.length;j++){var x=await api("DELETE","/databases/"+db+"/collections/"+c+"/documents/"+ds[j].$id,k);if(x.ok){n++;total++}}log("  "+n+" deleted");if(ds.length<100)break}return n}
+async function delFiles(k,b){var n=0;for(var i=0;i<100;i++){var r=await api("GET","/storage/buckets/"+b+"/files?limit=100",k);if(!r.ok){log("❌ Files ["+r.status+"]");return n}var fs=(r.data&&r.data.files)||[];if(!fs.length)break;for(var j=0;j<fs.length;j++){var x=await api("DELETE","/storage/buckets/"+b+"/files/"+fs[j].$id,k);if(x.ok){n++;total++}}log("  "+n+" files");if(fs.length<100)break}return n}
+async function delUsers(k){var n=0;for(var i=0;i<100;i++){var r=await api("GET","/users?limit=100",k);if(!r.ok){log("⚠️ Users skip ["+r.status+"]");return n}var us=(r.data&&r.data.users)||[];if(!us.length)break;for(var j=0;j<us.length;j++){var x=await api("DELETE","/users/"+us[j].$id,k);if(x.ok){n++;total++}}log("  "+n+" users");if(us.length<100)break}return n}
+async function run(){var k=document.getElementById("key").value.trim();if(!k){show("❌ API Key ထည့်ပါ","err");return}if(!confirm("⚠️ Data အကုန် ဖျက်မယ် — သေချာလား?"))return;if(!confirm("🛑 နောက်ဆုံး အတည်ပြုချက်"))return;dis(true);out.className="o show info";out.innerHTML="";total=0;log("🚀 Started...");log("");try{log("📸 Photos...");await delDocs(k,DB,PT);log("📁 Files...");await delFiles(k,BK);log("👥 User Points...");await delDocs(k,DB,UT);log("👤 Users...");await delUsers(k);log("\\n✅ DONE — Total: "+total);out.className="o show ok"}catch(e){log("\\n❌ Error: "+e.name+": "+e.message);out.className="o show err"}dis(false)}
+</script>
+</body></html>`;
