@@ -19,7 +19,7 @@ export interface Env {
   [key: string]: any;
 }
 
-// =================== Appwrite REST Helpers ====================
+// ==================== Appwrite REST Helpers ====================
 
 function awHeaders(env: Env, withBody = false): Headers {
   const h = new Headers();
@@ -177,8 +177,8 @@ const MAIN_MENU = "ဟယ်လို... ဘာလေးလုပ်ပေးရ
 function mainKeyboard() {
   return {
     keyboard: [
-      [{ text: "🎁 Daily ယူမယ်" }, { text: "🖼️ point နဲ့ဓတ်ပုံလဲမယ်" }],
-      [{ text: "💌 သူငယ်ချင်းတွေဖိတ်မယ်" }, { text: "👤 Profile လေး" }],
+      [{ text: "🎁 Daily ယူမယ်" }, { text: "🖼️ pointနဲ့ဓတ်ပုံလဲမယ်" }],
+      [{ text: "💌 သူငယ်ချင်းဖိတ်မယ်" }, { text: "👤 Profile လေး" }],
       [{ text: "🚪 အကောင့်ထွက်မယ်" }],
     ],
     resize_keyboard: true,
