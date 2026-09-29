@@ -89,36 +89,36 @@ async function awRegister(email: string, password: string): Promise<{ id: string
 
 // ============ User Points ============
 
-// ✅ FIXED — Appwrite REST query format
+// ✅ FIXED — document ID = userId တိုက်ရိုက် get
 async function awGetUserPoints(env: Env, userId: string): Promise<any | null> {
   try {
-    const query = JSON.stringify({
-      method: "equal",
-      attribute: "user_id",
-      values: [userId]
-    });
     const res = await awFetch(
       env,
       "GET",
-      `/databases/${DATABASE_ID}/collections/${USER_TABLE_ID}/documents?queries[]=${encodeURIComponent(query)}`
+      `/databases/${DATABASE_ID}/collections/${USER_TABLE_ID}/documents/${encodeURIComponent(userId)}`
     );
-    if (res?.documents?.length > 0) return res.documents[0];
+    if (res?.$id) return res;
     return null;
   } catch { return null; }
 }
 
 async function awCreateUserPoints(env: Env, userId: string, chatId: number, invitedBy = ""): Promise<any> {
-  return await awFetch(env, "POST", `/databases/${DATABASE_ID}/collections/${USER_TABLE_ID}/documents`, {
-    documentId: userId,
-    data: {
-      user_id: userId,
-      telegram_chat_id: String(chatId),
-      points: 0,
-      last_daily: "",
-      total_invites: 0,
-      invited_by: invitedBy,
-    },
-  });
+  try {
+    return await awFetch(env, "POST", `/databases/${DATABASE_ID}/collections/${USER_TABLE_ID}/documents`, {
+      documentId: userId,
+      data: {
+        user_id: userId,
+        telegram_chat_id: String(chatId),
+        points: 0,
+        last_daily: "",
+        total_invites: 0,
+        invited_by: invitedBy,
+      },
+    });
+  } catch (e) {
+    console.log("awCreateUserPoints error", e);
+    return null;
+  }
 }
 
 async function awUpdateUserPoints(env: Env, docId: string, updates: any): Promise<any> {
@@ -132,25 +132,22 @@ async function awUpdateUserPoints(env: Env, docId: string, updates: any): Promis
 
 // ============ Photos ============
 
-// ✅ FIXED — Appwrite REST query format
+// ✅ FIXED — query မလုပ်ဘဲ code ထဲ filter
 async function awGetPhotos(env: Env, userId: string, limit: number): Promise<any[]> {
   try {
-    const q1 = JSON.stringify({
-      method: "equal",
-      attribute: "user_id",
-      values: [userId]
-    });
-    const q2 = JSON.stringify({
-      method: "limit",
-      values: [limit]
-    });
     const res = await awFetch(
       env,
       "GET",
-      `/databases/${DATABASE_ID}/collections/${PHOTO_TABLE_ID}/documents?queries[]=${encodeURIComponent(q1)}&queries[]=${encodeURIComponent(q2)}`
+      `/databases/${DATABASE_ID}/collections/${PHOTO_TABLE_ID}/documents?limit=500`
     );
-    return res?.documents || [];
-  } catch { return []; }
+    const all = res?.documents || [];
+    const mine = all.filter((d: any) => d.user_id === userId);
+    console.log(`[awGetPhotos] total=${all.length}, mine=${mine.length}`);
+    return mine.slice(0, limit);
+  } catch (e) {
+    console.log("awGetPhotos error", e);
+    return [];
+  }
 }
 
 async function awDeletePhoto(env: Env, docId: string, fileId: string): Promise<void> {
@@ -184,13 +181,13 @@ const setRef = async (env: Env, id: number, ref: string) => { try { await env.BO
 const getRef = async (env: Env, id: number): Promise<string> => { try { return (await env.BOT_SESSIONS.get(`r:${id}`)) || ""; } catch { return ""; } };
 const clearRef = async (env: Env, id: number) => { try { await env.BOT_SESSIONS.delete(`r:${id}`); } catch {} };
 
-// ==================== UI (BUTTON TEXT) ====================
+// ==================== UI ====================
 
 const BTN_DAILY = "🎁 Daily ယူမယ်";
 const BTN_SHOW = "🖼️ Point နဲ့ ဓာတ်ပုံလဲမယ်";
 const BTN_INVITE = "💌 သူငယ်ချင်းဖိတ်မယ်";
 const BTN_PROFILE = "👤 Profile လေး";
-const BTN_LOGOUT = "🚪 အကောင့်ထွက်မယ်";
+const BTN_LOGOUT = "🚪 အကောင့်ထွက်မယ်နော်";
 
 const MAIN_MENU = "ဟယ်လို... ဘာလေးလုပ်ပေးရမလဲရှင် 🌸 ပြောပါနော် 🥰";
 
@@ -255,7 +252,7 @@ function setupBot(bot: Bot, env: Env) {
 
     const kb = new InlineKeyboard()
       .text("🔐 အကောင့်ဝင်မယ်", "do_login")
-      .text("📝အသစ်ဖွင့်မယ်", "do_register");
+      .text("📝 အကောင့်အသစ်ဖွင့်မယ်", "do_register");
     await ctx.reply(
       `ကဲ... ${name} ရေ၊ Bot လေးကို သုံးဖို့ App ထဲမှာ ဖွင့်ထားတဲ့ အကောင့်လေး အရင်လိုတယ်နော် 🌸\n\nအကောင့် ဝင်မလား? အသစ်ဖွင့်မလားရှင်?`,
       { reply_markup: kb }
@@ -385,12 +382,12 @@ function setupBot(bot: Bot, env: Env) {
       if (!up) up = await awCreateUserPoints(env, sess.userId, ctx.from.id);
 
       const today = new Date().toISOString().split("T")[0];
-      const last = (up.last_daily || "").split("T")[0];
+      const last = (up?.last_daily || "").split("T")[0];
       if (last === today) {
-        await ctx.reply(`ဟယ်... ဒီနေ့အတွက် ယူပြီးသွားပြီလေ 🥺\n\nမနက်ဖြန်မှ ပြန်လာယူလှည့်ပါဦးနော် 🌸\n\n🎁 လက်ရှိ Points: ${up.points || 0}`);
+        await ctx.reply(`ဟယ်... ဒီနေ့အတွက် ယူပြီးသွားပြီလေ 🥺\n\nမနက်ဖြန်မှ ပြန်လာယူလှည့်ပါဦးနော် 🌸\n\n🎁 လက်ရှိ Points: ${up?.points || 0}`);
         return;
       }
-      const np = (up.points || 0) + DAILY_POINTS;
+      const np = (up?.points || 0) + DAILY_POINTS;
       await awUpdateUserPoints(env, up.$id, { points: np, last_daily: new Date().toISOString() });
       await ctx.reply(`ကဲ... ဒီနေ့အတွက် လက်ဆောင်လေး ရပြီနော် 🎁\n\n🎁 +${DAILY_POINTS} Points ရသွားတယ် 🌸\n💰 စုစုပေါင်း: ${np} Points 🥰`);
     } catch (e: any) {
@@ -522,7 +519,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/") {
-      return new Response("🌸 Zhost Photo Bot (Appwrite) အလုပ်လုပ်နေပါတယ်ရှင် 💕", {
+      return new Response("Zhost Photo Bot (Appwrite) OK", {
         status: 200,
         headers: { "Content-Type": "text/plain; charset=utf-8" },
       });
