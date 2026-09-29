@@ -89,12 +89,18 @@ async function awRegister(email: string, password: string): Promise<{ id: string
 
 // ============ User Points ============
 
+// ✅ FIXED — Appwrite REST query format
 async function awGetUserPoints(env: Env, userId: string): Promise<any | null> {
   try {
+    const query = JSON.stringify({
+      method: "equal",
+      attribute: "user_id",
+      values: [userId]
+    });
     const res = await awFetch(
       env,
       "GET",
-      `/databases/${DATABASE_ID}/collections/${USER_TABLE_ID}/documents?queries[]=${encodeURIComponent(`equal("user_id", ["${userId}"])`)}`
+      `/databases/${DATABASE_ID}/collections/${USER_TABLE_ID}/documents?queries[]=${encodeURIComponent(query)}`
     );
     if (res?.documents?.length > 0) return res.documents[0];
     return null;
@@ -126,14 +132,22 @@ async function awUpdateUserPoints(env: Env, docId: string, updates: any): Promis
 
 // ============ Photos ============
 
+// ✅ FIXED — Appwrite REST query format
 async function awGetPhotos(env: Env, userId: string, limit: number): Promise<any[]> {
   try {
-    const q = `equal("user_id", ["${userId}"])`;
-    const l = `limit(${limit})`;
+    const q1 = JSON.stringify({
+      method: "equal",
+      attribute: "user_id",
+      values: [userId]
+    });
+    const q2 = JSON.stringify({
+      method: "limit",
+      values: [limit]
+    });
     const res = await awFetch(
       env,
       "GET",
-      `/databases/${DATABASE_ID}/collections/${PHOTO_TABLE_ID}/documents?queries[]=${encodeURIComponent(q)}&queries[]=${encodeURIComponent(l)}`
+      `/databases/${DATABASE_ID}/collections/${PHOTO_TABLE_ID}/documents?queries[]=${encodeURIComponent(q1)}&queries[]=${encodeURIComponent(q2)}`
     );
     return res?.documents || [];
   } catch { return []; }
@@ -176,7 +190,7 @@ const BTN_DAILY = "🎁 Daily ယူမယ်";
 const BTN_SHOW = "🖼️ Point နဲ့ ဓာတ်ပုံလဲမယ်";
 const BTN_INVITE = "💌 သူငယ်ချင်းဖိတ်မယ်";
 const BTN_PROFILE = "👤 Profile လေး";
-const BTN_LOGOUT = "🚪 အကောင့်ထွက်မယ်နော်";
+const BTN_LOGOUT = "🚪 အကောင့်ထွက်မယ်";
 
 const MAIN_MENU = "ဟယ်လို... ဘာလေးလုပ်ပေးရမလဲရှင် 🌸 ပြောပါနော် 🥰";
 
@@ -241,7 +255,7 @@ function setupBot(bot: Bot, env: Env) {
 
     const kb = new InlineKeyboard()
       .text("🔐 အကောင့်ဝင်မယ်", "do_login")
-      .text("📝 အကောင့်အသစ်ဖွင့်မယ်", "do_register");
+      .text("📝အသစ်ဖွင့်မယ်", "do_register");
     await ctx.reply(
       `ကဲ... ${name} ရေ၊ Bot လေးကို သုံးဖို့ App ထဲမှာ ဖွင့်ထားတဲ့ အကောင့်လေး အရင်လိုတယ်နော် 🌸\n\nအကောင့် ဝင်မလား? အသစ်ဖွင့်မလားရှင်?`,
       { reply_markup: kb }
