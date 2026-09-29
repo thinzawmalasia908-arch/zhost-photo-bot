@@ -170,16 +170,22 @@ const setRef = async (env: Env, id: number, ref: string) => { try { await env.BO
 const getRef = async (env: Env, id: number): Promise<string> => { try { return (await env.BOT_SESSIONS.get(`r:${id}`)) || ""; } catch { return ""; } };
 const clearRef = async (env: Env, id: number) => { try { await env.BOT_SESSIONS.delete(`r:${id}`); } catch {} };
 
-// ==================== UI ====================
+// ==================== UI (BUTTON TEXT) ====================
+
+const BTN_DAILY = "🎁 Daily ယူမယ်";
+const BTN_SHOW = "🖼️ Point နဲ့ ဓာတ်ပုံလဲမယ်";
+const BTN_INVITE = "💌 သူငယ်ချင်းဖိတ်မယ်";
+const BTN_PROFILE = "👤 Profile လေး";
+const BTN_LOGOUT = "🚪 အကောင့်ထွက်မယ်နော်";
 
 const MAIN_MENU = "ဟယ်လို... ဘာလေးလုပ်ပေးရမလဲရှင် 🌸 ပြောပါနော် 🥰";
 
 function mainKeyboard() {
   return {
     keyboard: [
-      [{ text: "🎁 Daily ယူမယ်" }, { text: "🖼️ pointနဲ့ဓတ်ပုံလဲမယ်" }],
-      [{ text: "💌 သူငယ်ချင်းဖိတ်မယ်" }, { text: "👤 Profile လေး" }],
-      [{ text: "🚪 အကောင့်ထွက်မယ်" }],
+      [{ text: BTN_DAILY }, { text: BTN_SHOW }],
+      [{ text: BTN_INVITE }, { text: BTN_PROFILE }],
+      [{ text: BTN_LOGOUT }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -292,11 +298,11 @@ function setupBot(bot: Bot, env: Env) {
 
     const sess = await getSession(env, uid);
     if (sess?.userId) {
-      if (text === "🎁 Daily လေးယူမယ်") return handleDaily(ctx, env, sess);
-      if (text === "🖼️ ဓာတ်ပုံလေးတွေကြည့်မယ်") return handleShowMenu(ctx, env, sess);
-      if (text === "💌 သူငယ်ချင်းတွေကိုဖိတ်မယ်") return handleInvite(ctx, env, sess, name);
-      if (text === "👤 Profile လေး") return handleProfile(ctx, env, sess);
-      if (text === "🚪 အကောင့်ထွက်မယ်နော်") return handleLogout(ctx, env, sess);
+      if (text === BTN_DAILY) return handleDaily(ctx, env, sess);
+      if (text === BTN_SHOW) return handleShowMenu(ctx, env, sess);
+      if (text === BTN_INVITE) return handleInvite(ctx, env, sess, name);
+      if (text === BTN_PROFILE) return handleProfile(ctx, env, sess);
+      if (text === BTN_LOGOUT) return handleLogout(ctx, env, sess);
       return;
     }
 
@@ -332,7 +338,6 @@ function setupBot(bot: Bot, env: Env) {
         let up = await awGetUserPoints(env, user.id);
         if (!up) {
           up = await awCreateUserPoints(env, user.id, uid, ref);
-          // Invite bonus
           if (ref) {
             try {
               const refTgId = parseInt(ref);
@@ -494,4 +499,29 @@ function setupBot(bot: Bot, env: Env) {
   });
 
   bot.callbackQuery("cancel_logout", async (ctx) => {
-    try { await ctx.answerCallbackQuery({ text: "ဟီး... မထွက်တော့ဘူးမလား 🥰" }
+    try { await ctx.answerCallbackQuery({ text: "ဟီး... မထွက်တော့ဘူးမလား 🥰" }); } catch {}
+    try { await ctx.editMessageText(MAIN_MENU); } catch {}
+  });
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === "/") {
+      return new Response("🌸 Zhost Photo Bot (Appwrite) အလုပ်လုပ်နေပါတယ်ရှင် 💕", {
+        status: 200,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
+    if (url.pathname === "/webhook") {
+      try {
+        const bot = getBot(env);
+        return await webhookCallback(bot, "cloudflare-mod")(request);
+      } catch (error: any) {
+        console.error("Webhook Error:", error?.message || error);
+        return new Response(`Error: ${error?.message || error}`, { status: 500 });
+      }
+    }
+    return new Response("Not Found", { status: 404 });
+  },
+};
