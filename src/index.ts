@@ -19,7 +19,7 @@ export interface Env {
   [key: string]: any;
 }
 
-// ==================== Appwrite REST Helpers ====================
+// =================== Appwrite REST Helpers ====================
 
 function awHeaders(env: Env, withBody = false): Headers {
   const h = new Headers();
