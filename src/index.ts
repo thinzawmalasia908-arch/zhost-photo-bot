@@ -131,17 +131,46 @@ async function awUpdateUserPoints(env: Env, docId: string, updates: any): Promis
 
 // ============ Photos ============
 
+// ✅ FIXED — Appwrite REST query format သုံး
 async function awGetPhotos(env: Env, userId: string, limit: number): Promise<any[]> {
   try {
-    const res = await awFetch(
+    // ✅ Appwrite REST query format
+    const q = JSON.stringify({
+      method: "equal",
+      attribute: "user_id",
+      values: [userId]
+    });
+    const l = JSON.stringify({
+      method: "limit",
+      values: [100]
+    });
+
+    const url = `/databases/${DATABASE_ID}/collections/${PHOTO_TABLE_ID}/documents?queries[]=${encodeURIComponent(q)}&queries[]=${encodeURIComponent(l)}`;
+
+    console.log("[awGetPhotos] Query URL:", url);
+    const res = await awFetch(env, "GET", url);
+    console.log("[awGetPhotos] Found:", res?.documents?.length || 0);
+
+    if (res?.documents?.length > 0) {
+      return res.documents.slice(0, limit);
+    }
+
+    // Fallback — အကုန်ဆွဲ → filter
+    console.log("[awGetPhotos] Fallback: fetch all");
+    const all = await awFetch(
       env,
       "GET",
-      `/databases/${DATABASE_ID}/collections/${PHOTO_TABLE_ID}/documents?limit=500`
+      `/databases/${DATABASE_ID}/collections/${PHOTO_TABLE_ID}/documents`
     );
-    const all = res?.documents || [];
-    const mine = all.filter((d: any) => d.user_id === userId);
+    const docs = all?.documents || [];
+    console.log("[awGetPhotos] Total:", docs.length);
+    const mine = docs.filter((d: any) => d.user_id === userId);
+    console.log("[awGetPhotos] Mine:", mine.length);
     return mine.slice(0, limit);
-  } catch { return []; }
+  } catch (e: any) {
+    console.log("[awGetPhotos] ERROR:", e?.message || e);
+    return [];
+  }
 }
 
 async function awDeletePhoto(env: Env, docId: string, fileId: string): Promise<void> {
@@ -273,7 +302,7 @@ function setupBot(bot: Bot, env: Env) {
       await ctx.reply(MAIN_MENU, { reply_markup: mainKeyboard() });
       return;
     }
-    const kb = new InlineKeyboard().text("🔐 အကောင့်ဝင်မယ်", "do_login").text("📝 အကောင့်အသစ်ဖွင့်မယ်", "do_register");
+    const kb = new InlineKeyboard().text("🔐 အကောင့်ဝင်မယ်", "do_login").text("📝 အသစ်ဖွင့်မယ်", "do_register");
     try {
       await ctx.editMessageText(`Channel လေးကို Join ပေးလို့ ကျေးဇူးပါ ${name} ရေ 🥰\n\nအကောင့် ဝင်မလား? အသစ်ဖွင့်မလားရှင်?`, { reply_markup: kb });
     } catch {}
